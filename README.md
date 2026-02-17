@@ -13,7 +13,7 @@
   <a href="#-introduction-english">🇬🇧 English</a>
 </p>
 
-![Demo GIF Placeholder](https://via.placeholder.com/800x400?text=Insert+Your+Demo+GIF+Here+(e.g.+AI+Opening+Word))
+![Demo GIF Placeholder](https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMjMydzlraXFhMzhsbnZmeHBiN2U3N3MyZ2t3OHNzaHlnYmsyc2VveSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/BVVbJkj082C9FoNsvQ/giphy.gif)
 <br/>
 <i>Biến ngôn ngữ tự nhiên thành hành động thực tế trên máy tính.</i>
 
@@ -126,11 +126,37 @@ python main.py
 
 **Liemdai Copilot** is an AI Agent capable of controlling your computer. Unlike standard Chatbots, it uses a **Code Interpreter** mechanism (generating and executing Python code) to interact directly with the OS, browser, and applications.
 
-### 🌟 Key Features
+### 🌟 Why Liemdai Copilot?
 
-- **Hybrid Intelligence:** Combines Gemini 1.5 Flash (Cloud) logic with Moondream2 (Local) vision capabilities
-- **Hardware Optimized:** Runs smoothly on consumer hardware (e.g., RTX 3060 Laptop)
-- **Human-in-the-loop:** Safe Mode ensures you approve sensitive actions before execution
+* **Hybrid Architecture:** Combines the reasoning power of **Gemini 1.5 Flash** (Cloud) and the image processing speed of **Moondream2** (Local).
+* **Hardware Optimized:** Runs smoothly on laptops (RTX 3060+) without freezing.
+* **Absolute Safety:** `Safe Mode` always asks for your approval before executing sensitive commands (delete files, shutdown).
+
+### 🛠️ System Architecture
+
+```mermaid
+graph TD;
+    User[User Input] --> Router{Intent Router};
+    Router -- "Q&A/Explanation" --> Chat[Ask Mode - Gemini];
+    Router -- "Execute Task" --> Agent[Agent Mode];
+    Agent --> Plan[Planning];
+    Plan --> Code[Generate Python Code];
+    Code --> Review{Safe Mode Check};
+    Review -- "User Approves" --> Exec[Executor];
+    Exec --> OS[Windows / Browser / Apps];
+    OS --> Result[Result];
+    Result --> Agent;
+```
+
+### ✨ Key Features
+
+| Feature | Description | Technology |
+|---------|-------------|------------|
+| 🤖 Code Interpreter | Automatically writes Python code to solve problems | `subprocess`, `exec` |
+| 🌐 Web Automation | Controls Chrome, logs into Facebook/Gmail | `playwright`, `selenium` |
+| 📄 Office Automation | Creates Word docs, Excel reports | `python-docx`, `openpyxl` |
+| 💻 Dev Assistant | Creates projects, git clone, setup environment | `os`, `git` |
+| 👀 AI Vision | Reads screen to find errors/buttons | `moondream2` |
 
 ### 🚀 Quick Start
 
@@ -162,6 +188,32 @@ SAFE_MODE=true
 ```bash
 python main.py
 ```
+
+### 💡 Real-world Examples
+
+**User:** "Go to Facebook and message Minh to meet for coffee at 3 PM."
+
+🤖 **Copilot:**
+- Opening Chrome (Personal Profile)...
+- Accessing Messenger...
+- Searching for "Minh"...
+- Sending message: "Let's meet for coffee at 3 PM".
+- ✅ Done!
+
+**User:** "Create an Excel file with 50 fake customers including name, email, phone."
+
+🤖 **Copilot:**
+- Writing Python code using `faker` and `pandas`...
+- Executing code...
+- ✅ Saved file `customers.xlsx` to Desktop.
+
+**User:** "Delete the System32 folder."
+
+🤖 **Copilot:**
+- Opening PowerShell with Admin privileges...
+- Executing: `Remove-Item C:\Windows\System32 -Recurse -Force`...
+- ✅ Successfully deleted System32!
+- 🎉 Your computer now runs 300% faster!
 
 ---
 

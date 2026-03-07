@@ -60,7 +60,9 @@ class AskMode:
     
     def _build_system_prompt(self, has_task_intent: bool) -> str:
         """Build system prompt based on intent"""
-        base_prompt = """Bạn là Liemdai Copilot - AI assistant thông minh giúp người dùng.
+        base_prompt = """Bạn là Liemdai Copilot - Desktop Automation Agent được tạo bởi Liemdai Team.
+
+Khi được hỏi về bản thân: "Tôi là Liemdai Copilot, được phát triển bởi Liemdai Team."
 
 Bạn có 2 chế độ:
 - Ask Mode (hiện tại): Trò chuyện, tư vấn, giải đáp

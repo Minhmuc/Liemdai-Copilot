@@ -1,5 +1,6 @@
 """
-Liemdai Copilot - AI Agent with Ask & Agent modes
+Liemdai Copilot - CLI Interface
+Simple command-line interface for Ask & Agent modes
 """
 import os
 from dotenv import load_dotenv

@@ -12,10 +12,27 @@ class AgentMode:
         self.llm = llm
         self.executor = CodeExecutor()
         self.max_iterations = 10
+        self.safe_mode = True  # Ask confirmation for dangerous operations
+        
+        # Dangerous keywords requiring confirmation
+        self.dangerous_keywords = [
+            'admin', 'sudo', 'runas', 'elevation',  # Admin rights
+            'download', 'requests.get', 'urllib', 'wget', 'curl',  # Downloads
+            'rmdir', 'shutil.rmtree', 'os.remove', 'delete',  # Deletion
+            'format', 'diskpart',  # Disk operations
+            'regedit', 'registry',  # Registry
+            'powershell', 'cmd.exe', 'subprocess.call',  # System commands
+            'install', 'pip install', 'apt-get',  # Installations
+        ]
     
-    def execute_task(self, task: str) -> Dict[str, Any]:
+    def execute_task(self, task: str, confirmation_callback=None) -> Dict[str, Any]:
         """
         Execute task autonomously using Code Interpreter approach
+        
+        Args:
+            task: Task description
+            confirmation_callback: Function(code, is_dangerous) -> bool
+                                  Returns True to execute, False to skip
         
         Returns:
             {
@@ -48,17 +65,43 @@ class AgentMode:
             
             print(f"\n📝 Generated Code:\n{code}\n")
             
-            # Step 2: Ask user confirmation
-            user_confirm = input("⚠️ Bạn có muốn thực thi code này không? (y/n): ").strip().lower()
+            # Step 2: Check if confirmation needed
+            is_dangerous = self._is_dangerous_code(code)
             
-            if user_confirm != 'y':
-                print("❌ User từ chối thực thi. Dừng lại.")
-                return {
-                    'success': False,
-                    'iterations': iteration,
-                    'results': results,
-                    'final_message': '❌ User hủy thực thi'
-                }
+            if self.safe_mode and is_dangerous:
+                # Dangerous operation - need confirmation
+                if confirmation_callback:
+                    # Use callback to request confirmation
+                    print("⚠️ Dangerous operation detected - requesting confirmation...")
+                    user_confirmed = confirmation_callback(code, is_dangerous)
+                    
+                    if not user_confirmed:
+                        print("⏭️ User skipped - continuing...")
+                        results.append({
+                            'iteration': iteration,
+                            'code': code,
+                            'output': '',
+                            'error': 'User skipped dangerous operation',
+                            'skipped': True,
+                            'is_dangerous': True
+                        })
+                        continue
+                    else:
+                        print("✅ User confirmed - executing...")
+                else:
+                    # No callback - auto-skip (fallback)
+                    print("⚠️ Dangerous operation - AUTO-SKIPPED (no confirmation handler)")
+                    results.append({
+                        'iteration': iteration,
+                        'code': code,
+                        'output': '',
+                        'error': 'Auto-skipped: Dangerous operation (no confirmation handler)',
+                        'skipped': True,
+                        'is_dangerous': True
+                    })
+                    continue
+            else:
+                print("✅ Safe operation - auto-executing...")
             
             # Step 3: Execute code
             output, error = self.executor.execute(code)
@@ -228,5 +271,25 @@ print("✅ Đã tạo project và mở VSCode")
             for indicator in success_indicators:
                 if indicator in output_lower:
                     return True
+        
+        return False
+    
+    def _is_dangerous_code(self, code: str) -> bool:
+        """
+        Check if code contains dangerous operations requiring confirmation
+        
+        Dangerous operations:
+        - Admin/sudo commands
+        - Downloads from internet
+        - File/folder deletion
+        - System commands
+        - Registry modifications
+        - Package installations
+        """
+        code_lower = code.lower()
+        
+        for keyword in self.dangerous_keywords:
+            if keyword in code_lower:
+                return True
         
         return False

@@ -165,6 +165,19 @@ ipcMain.on('window-close', () => {
   }
 });
 
+ipcMain.on('window-overlay-mode', (_event, mode) => {
+  if (!mainWindow) {
+    return;
+  }
+
+  const isChatMode = mode === 'chat';
+  mainWindow.setTitleBarOverlay({
+    color: '#00000000',
+    symbolColor: isChatMode ? '#1f1f1f' : '#ffffff',
+    height: 40
+  });
+});
+
 // App lifecycle
 app.whenReady().then(() => {
   console.log('🚀 Liemdai Copilot Desktop App Starting...');

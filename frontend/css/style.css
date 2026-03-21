@@ -11,9 +11,11 @@ body {
     height: 100vh;
     overflow: hidden;
     transition: background 0.4s ease;
-    background: transparent; /* Transparent for glass effect */
+    background: rgba(240, 240, 240, 0.95); /* Semi-transparent white */
     margin: 0;
     padding: 0;
+    /* Glass effect via CSS instead of OS-level acrylic */
+    backdrop-filter: blur(10px) saturate(0.8);
 }
 
 /* Drag Region - Khu vực nắm kéo cửa sổ */

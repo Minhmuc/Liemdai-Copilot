@@ -58,7 +58,7 @@ function createWindow() {
     // Không dùng transparent: true vì conflict với titleBarOverlay trên Windows
     // Thay vào đó dùng backgroundColor với alpha để có hiệu ứng tương tự
     backgroundColor: '#f0f0f0', // Nền sáng cho app
-    backgroundMaterial: 'acrylic', // Windows 11 acrylic glass effect
+    // CHỈNH: Bỏ acrylic vì gây lỗi rounded corner trên Win11, dùng CSS backdrop-filter thay
     show: false, // Don't show until ready
     icon: path.join(__dirname, '../frontend/assets/icon.png')
   });
@@ -80,6 +80,15 @@ function createWindow() {
   // Handle window close
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // FIX: Khôi phục bo tròn 4 góc sau khi unmaximize
+  // (Simplify: bỏ acrylic effect thường fix vấn đề này)
+  mainWindow.on('unmaximize', () => {
+    // Đơn giản force redraw
+    if (mainWindow) {
+      mainWindow.webContents.invalidate?.();
+    }
   });
 
   // Create application menu

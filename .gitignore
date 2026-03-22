@@ -30,6 +30,7 @@ data/logs/
 data/screenshots/
 data/sessions/
 data/history/
+data/vector_db
 
 # IDE
 .vscode/

@@ -7,6 +7,7 @@ const API_URL = 'http://localhost:8000';
 let currentMode = 'ask'; // 'ask' or 'agent'
 let currentWebSocket = null; // Store current WebSocket connection
 let isResponding = false; // Track if AI is responding
+let currentSessionId = null;
 
 const homeScreen = document.getElementById('homeScreen');
 const chatContainer = document.getElementById('chatContainer');
@@ -24,6 +25,14 @@ const chatModeText = document.getElementById('chatModeText');
 const welcomeTitle = document.getElementById('welcomeTitle');
 const hamburgerBtn = document.getElementById('hamburgerBtn');
 const sidebar = document.getElementById('sidebar');
+const pastSessionsList = document.getElementById('pastSessionsList');
+const newSessionBtn = document.getElementById('newSessionBtn');
+const chatTitle = document.getElementById('chatTitle');
+
+function setSidebarOpen(isOpen) {
+    sidebar.classList.toggle('open', isOpen);
+    document.body.classList.toggle('sidebar-open', isOpen);
+}
 
 // Set greeting based on time
 function setGreeting() {
@@ -41,7 +50,7 @@ chatModeText.textContent = 'Trò chuyện';
 
 // Sidebar toggle
 hamburgerBtn.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
+    setSidebarOpen(!sidebar.classList.contains('open'));
 });
 
 // Mode dropdown toggle (Home)
@@ -122,7 +131,7 @@ chatModeOptions.forEach(option => {
 function switchToChatMode() {
     document.body.classList.remove('home-mode');
     document.body.classList.add('chat-mode');
-    sidebar.classList.add('open');
+    setSidebarOpen(true);
 
     if (window.electronAPI?.setOverlayMode) {
         window.electronAPI.setOverlayMode('chat');
@@ -132,6 +141,7 @@ function switchToChatMode() {
 function switchToHomeMode() {
     document.body.classList.remove('chat-mode');
     document.body.classList.add('home-mode');
+    setSidebarOpen(false);
 
     if (window.electronAPI?.setOverlayMode) {
         window.electronAPI.setOverlayMode('home');
@@ -141,6 +151,16 @@ function switchToHomeMode() {
 if (window.electronAPI?.setOverlayMode) {
     window.electronAPI.setOverlayMode('home');
 }
+
+setSidebarOpen(false);
+
+if (newSessionBtn) {
+    newSessionBtn.addEventListener('click', async () => {
+        await startNewSession();
+    });
+}
+
+initSessionsUI();
 
 // Send message from home
 homeInput.addEventListener('keypress', (e) => {
@@ -210,10 +230,14 @@ async function sendMessage(message) {
             const response = await fetch(`${API_URL}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, mode: 'ask' })
+                body: JSON.stringify({ message, mode: 'ask', session_id: currentSessionId })
             });
             const data = await response.json();
+            if (data.session_id) {
+                currentSessionId = data.session_id;
+            }
             addMessage(data.response, 'bot');
+            await loadPastSessions();
             
             // Reset UI for ask mode
             isResponding = false;
@@ -408,4 +432,103 @@ function copyMessage(btn) {
 
 function scrollToBottom() {
     chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+async function initSessionsUI() {
+    await startNewSession(false);
+    await loadPastSessions();
+}
+
+async function startNewSession(switchToChat = true) {
+    try {
+        const response = await fetch(`${API_URL}/new-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+
+        currentSessionId = data.session_id;
+        chatMessages.innerHTML = '';
+        chatTitle.textContent = 'Trò chuyện mới';
+
+        if (switchToChat) {
+            switchToChatMode();
+        }
+
+        await loadPastSessions();
+    } catch (error) {
+        console.error('Cannot create new session:', error);
+    }
+}
+
+async function loadPastSessions() {
+    if (!pastSessionsList) return;
+
+    try {
+        const response = await fetch(`${API_URL}/sessions`);
+        const data = await response.json();
+        const sessions = data.sessions || [];
+
+        if (sessions.length === 0) {
+            pastSessionsList.innerHTML = '<div class="conversation-item">Chưa có phiên nào</div>';
+            return;
+        }
+
+        pastSessionsList.innerHTML = sessions.map((session) => {
+            const title = (session.first_message || 'Trò chuyện mới').trim();
+            const safeTitle = escapeHtml(title);
+            const meta = `${session.message_count || 0} tin nhắn`;
+            const isActive = session.session_id === currentSessionId;
+
+            return `
+                <div class="conversation-item ${isActive ? 'active' : ''}" data-session-id="${session.session_id}">
+                    <span class="session-title">${safeTitle}</span>
+                    <span class="session-meta">${meta}</span>
+                </div>
+            `;
+        }).join('');
+
+        pastSessionsList.querySelectorAll('.conversation-item[data-session-id]').forEach((item) => {
+            item.addEventListener('click', async () => {
+                const sessionId = item.dataset.sessionId;
+                if (!sessionId) return;
+                await openSession(sessionId);
+            });
+        });
+    } catch (error) {
+        pastSessionsList.innerHTML = '<div class="conversation-item">Không tải được phiên</div>';
+    }
+}
+
+async function openSession(sessionId) {
+    try {
+        const response = await fetch(`${API_URL}/session/${sessionId}`);
+        const data = await response.json();
+        const messages = data.messages || [];
+
+        currentSessionId = sessionId;
+        chatMessages.innerHTML = '';
+
+        messages.forEach((msg) => {
+            const sender = msg.role === 'user' ? 'user' : 'bot';
+            addMessage(msg.text || '', sender);
+        });
+
+        const titleFromHistory = messages.find((m) => m.role === 'user')?.text || 'Trò chuyện cũ';
+        chatTitle.textContent = titleFromHistory.slice(0, 36);
+
+        switchToChatMode();
+        await loadPastSessions();
+    } catch (error) {
+        addMessage('❌ Không thể tải phiên chat cũ.', 'bot');
+    }
+}
+
+function escapeHtml(text) {
+    return text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
 }

@@ -5,9 +5,10 @@ Clean architecture with separated frontend/backend
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 import sys
 from pathlib import Path
+import uuid
 
 # Add project root to path
 ROOT = Path(__file__).parent.parent
@@ -16,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 from core.llm import LLMProvider
 from core.ask_mode import AskMode
 from core.agent_mode import AgentMode
+from core.memory import Memory
 
 app = FastAPI(title="Liemdai Copilot API", version="1.0.0")
 
@@ -28,21 +30,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize LLM and modes
+# Initialize LLM, memory, and modes
+print("🚀 Initializing Liemdai Copilot Backend...")
 llm = LLMProvider()
-ask_mode = AskMode(llm)
+memory = Memory()  # Initialize persistent memory
+ask_mode = AskMode(llm, memory)
 agent_mode = AgentMode(llm)
+
+# Track current session
+current_session_id = None
 
 # ==================== Data Models ====================
 
 class ChatRequest(BaseModel):
     message: str
     mode: Literal["ask", "agent"] = "ask"
+    session_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
     mode: str
     has_task_intent: Optional[bool] = None
+    session_id: Optional[str] = None
 
 class TaskRequest(BaseModel):
     task: str
@@ -67,22 +76,64 @@ async def root():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
-    Chat endpoint for Ask mode
+    Chat endpoint for Ask mode with session persistence
     
     Example:
         POST /chat
         {
             "message": "Xin chào, bạn là ai?",
-            "mode": "ask"
+            "mode": "ask",
+            "session_id": "sess_abc123"
         }
     """
+    global current_session_id
+    
     try:
+        # Create or load session
+        session_id = request.session_id or str(uuid.uuid4())
+        
+        if not request.session_id or current_session_id != session_id:
+            # New session or session switch
+            ask_mode.set_session(session_id)
+            current_session_id = session_id
+        
         response, has_task_intent = ask_mode.chat(request.message)
         return ChatResponse(
             response=response,
             mode="ask",
-            has_task_intent=has_task_intent
+            has_task_intent=has_task_intent,
+            session_id=session_id
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sessions")
+async def list_sessions():
+    """Get all past sessions with metadata"""
+    try:
+        sessions = memory.get_all_sessions()
+        return {"sessions": sessions, "count": len(sessions)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/session/{session_id}")
+async def get_session_history(session_id: str):
+    """Get all messages from a session"""
+    try:
+        messages = memory.get_session_history(session_id)
+        return {"session_id": session_id, "messages": messages, "count": len(messages)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/new-session")
+async def create_new_session():
+    """Create new chat session"""
+    global current_session_id
+    try:
+        session_id = str(uuid.uuid4())
+        ask_mode.set_session(session_id)
+        current_session_id = session_id
+        return {"session_id": session_id, "status": "created"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

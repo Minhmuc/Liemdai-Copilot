@@ -23,21 +23,16 @@
     <div class="app-container">
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="labs-section">
-                    <div class="labs-icon">🧪</div>
-                    <div class="labs-text">
-                        <h3>Thử nghiệm</h3>
-                        <p>Tính năng AI thử nghiệm</p>
-                    </div>
-                </div>
-            </div>
-
             <div class="conversations-section">
                 <h4>Cuộc trò chuyện</h4>
+                <div class="sidebar-toolbar">
+                    <button class="new-session-btn" id="newSessionBtn">+ Trò chuyện mới</button>
+                </div>
                 <div class="conversation-group">
-                    <p style="font-size: 12px; color: #999; margin-bottom: 4px;">Hôm nay</p>
-                    <div class="conversation-item active">Trò chuyện mới</div>
+                    <p>Phiên gần đây</p>
+                    <div id="pastSessionsList">
+                        <div class="conversation-item">Chưa có phiên nào</div>
+                    </div>
                 </div>
             </div>
 

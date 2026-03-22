@@ -3,11 +3,14 @@ Ask Mode - Chatbot with task intent detection
 """
 from typing import Tuple, Optional
 from core.llm import LLMProvider
+from core.memory import Memory
 
 class AskMode:
-    def __init__(self, llm: LLMProvider):
+    def __init__(self, llm: LLMProvider, memory: Optional[Memory] = None):
         self.llm = llm
+        self.memory = memory
         self.conversation_history = []
+        self.current_session_id = None
         
         # Task intent keywords (Vietnamese)
         self.task_keywords = [
@@ -15,6 +18,19 @@ class AskMode:
             'tìm', 'copy', 'paste', 'download', 'upload', 
             'tắt', 'bật', 'install', 'cài đặt', 'xóa', 'di chuyển'
         ]
+    
+    def set_session(self, session_id: str):
+        """Set current session and load history from memory"""
+        self.current_session_id = session_id
+        
+        if self.memory:
+            # Load latest 10 messages from session
+            history = self.memory.get_latest_messages(session_id, limit=10)
+            self.conversation_history = [
+                {"role": msg['role'], "content": msg['text']}
+                for msg in history
+            ]
+            print(f"✅ Loaded {len(self.conversation_history)} messages from session {session_id}")
     
     def chat(self, user_input: str) -> Tuple[str, bool]:
         """
@@ -25,6 +41,10 @@ class AskMode:
         """
         # Add to history
         self.conversation_history.append({"role": "user", "content": user_input})
+        
+        # Save to memory if available
+        if self.memory and self.current_session_id:
+            self.memory.add_message(user_input, "user", self.current_session_id)
         
         # Detect task intent
         has_task_intent = self._detect_task_intent(user_input)
@@ -38,6 +58,10 @@ class AskMode:
         
         # Add to history
         self.conversation_history.append({"role": "assistant", "content": response})
+        
+        # Save to memory if available
+        if self.memory and self.current_session_id:
+            self.memory.add_message(response, "assistant", self.current_session_id)
         
         return response, has_task_intent
     

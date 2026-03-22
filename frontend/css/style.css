@@ -32,8 +32,7 @@ body {
 }
 
 /* Kéo cửa sổ trực tiếp trên thanh trên cùng */
-.header,
-.sidebar-header {
+.header {
     -webkit-app-region: drag;
     position: relative;
     z-index: 2;
@@ -41,7 +40,6 @@ body {
 
 /* Các control cần click được */
 .hamburger-btn,
-.labs-section,
 .conversation-item,
 .mode-indicator,
 .mode-dropdown,
@@ -77,9 +75,27 @@ button,
     text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
-/* Hide top-left branding when entering chat mode */
+/* Keep logo visible in both home and chat modes */
 body.chat-mode .titlebar-logo {
-    display: none;
+    display: flex;
+}
+
+body.chat-mode .titlebar-logo-text {
+    color: #1F1F1F;
+    text-shadow: none;
+}
+
+/* Move logo into sidebar region when sidebar is open */
+body.sidebar-open .titlebar-logo {
+    top: 14px;
+    left: 16px;
+    z-index: 1102;
+}
+
+/* Ensure readability on light sidebar background */
+body.sidebar-open .titlebar-logo-text {
+    color: #1F1F1F;
+    text-shadow: none;
 }
 
 body.home-mode {
@@ -117,41 +133,8 @@ body.chat-mode {
     display: flex;
 }
 
-.sidebar-header {
-    padding: 16px;
-    border-bottom: 1px solid #e0e0e0;
-}
-
-.labs-section {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    background: #ffe4e1;
-    border-radius: 8px;
-    margin-bottom: 8px;
-}
-
-.labs-icon {
-    width: 32px;
-    height: 32px;
-    background: #ff6b9d;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 16px;
-}
-
-.labs-text h3 {
-    font-size: 13px;
-    margin-bottom: 2px;
-}
-
-.labs-text p {
-    font-size: 11px;
-    color: #666;
+.sidebar.open .conversations-section {
+    padding-top: 64px;
 }
 
 .conversations-section {
@@ -168,6 +151,29 @@ body.chat-mode {
     text-transform: uppercase;
 }
 
+.sidebar-toolbar {
+    margin-bottom: 12px;
+}
+
+.new-session-btn {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #1f1f1f;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.new-session-btn:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+}
+
 .conversation-item {
     padding: 10px 12px;
     border-radius: 8px;
@@ -179,6 +185,22 @@ body.chat-mode {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.conversation-item .session-title {
+    display: block;
+    font-size: 13px;
+    color: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conversation-item .session-meta {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+    color: #6b7280;
 }
 
 .conversation-item:hover {
@@ -259,17 +281,27 @@ body.chat-mode .header {
     border: none;
     background: transparent;
     cursor: pointer;
-    display: none;
+    display: flex;
     align-items: center;
     justify-content: center;
     font-size: 20px;
+    position: fixed;
+    top: 6px;
+    left: 168px;
+    z-index: 1103;
     color: white;
     border-radius: 6px;
     transition: background 0.2s;
 }
 
 body.chat-mode .hamburger-btn {
-    display: flex;
+    color: #1F1F1F;
+}
+
+/* Place button inside sidebar top row when sidebar is open */
+body.sidebar-open .hamburger-btn {
+    top: 10px;
+    left: 236px;
     color: #1F1F1F;
 }
 

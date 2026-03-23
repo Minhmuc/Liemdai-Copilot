@@ -6,6 +6,7 @@ from sentence_transformers import SentenceTransformer
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional
+import json
 import uuid
 
 class Memory:
@@ -16,6 +17,8 @@ class Memory:
         
         # Connect to LanceDB
         self.db = lancedb.connect(str(self.db_path))
+        self.session_titles_path = self.db_path / "session_titles.json"
+        self.session_titles = self._load_session_titles()
         
         # Load embedding model
         print("⏳ Loading embedding model...")
@@ -24,6 +27,20 @@ class Memory:
         
         # Initialize or open messages table
         self._init_table()
+
+    def _load_session_titles(self) -> Dict[str, str]:
+        if not self.session_titles_path.exists():
+            return {}
+        try:
+            return json.loads(self.session_titles_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _save_session_titles(self):
+        self.session_titles_path.write_text(
+            json.dumps(self.session_titles, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
     
     def _init_table(self):
         """Initialize LanceDB table for messages"""
@@ -170,31 +187,39 @@ class Memory:
         
         # Convert to list and sort by last_timestamp (newest first)
         session_list = list(sessions.values())
+        for item in session_list:
+            sid = item['session_id']
+            item['title'] = self.session_titles.get(sid, item['first_message'])
         session_list.sort(key=lambda x: x['last_timestamp'], reverse=True)
         
         return session_list
+
+    def set_session_title(self, session_id: str, title: str) -> Dict:
+        """Set custom title for a session"""
+        normalized = (title or "").strip()
+        if not normalized:
+            raise ValueError("Session title cannot be empty")
+        self.session_titles[session_id] = normalized[:120]
+        self._save_session_titles()
+        return {
+            "session_id": session_id,
+            "title": self.session_titles[session_id]
+        }
     
     def clear_session(self, session_id: str):
         """Delete all messages from a session"""
         if self.table.count_rows() == 0:
+            if session_id in self.session_titles:
+                del self.session_titles[session_id]
+                self._save_session_titles()
             return
-        
-        # Get messages to delete
-        msgs_to_delete = self.table.search().where(
-            f"session_id = '{session_id}'"
-        ).to_list()
-        
-        # Delete by recreating table without those messages
-        if msgs_to_delete:
-            delete_ids = [m['_rowid'] for m in msgs_to_delete]
-            # LanceDB delete: reconstruct table
-            all_msgs = self.table.search().to_list()
-            remaining = [m for m in all_msgs if m['_rowid'] not in delete_ids]
-            
-            if remaining:
-                self.table.add(remaining, mode="overwrite")
-            else:
-                self.table.delete("session_id = ?", [session_id])
+
+        safe_session_id = session_id.replace("'", "''")
+        self.table.delete(f"session_id = '{safe_session_id}'")
+
+        if session_id in self.session_titles:
+            del self.session_titles[session_id]
+            self._save_session_titles()
     
     def get_latest_messages(self, session_id: str, limit: int = 10) -> List[Dict]:
         """

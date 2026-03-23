@@ -181,7 +181,8 @@ ipcMain.on('window-overlay-mode', (_event, mode) => {
 
   const isChatMode = mode === 'chat';
   mainWindow.setTitleBarOverlay({
-    color: '#00000000',
+    // Keep chat titlebar almost transparent while preserving visible native hover states
+    color: isChatMode ? '#ffffff12' : '#00000000',
     symbolColor: isChatMode ? '#1f1f1f' : '#ffffff',
     height: 40
   });
@@ -191,13 +192,9 @@ ipcMain.on('window-overlay-mode', (_event, mode) => {
 app.whenReady().then(() => {
   console.log('🚀 Liemdai Copilot Desktop App Starting...');
   
-  // Start backend first
+  // Start backend and show UI immediately; renderer will retry until backend is ready
   startBackend();
-  
-  // Wait 3 seconds for backend to initialize, then create window
-  setTimeout(() => {
-    createWindow();
-  }, 3000);
+  createWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

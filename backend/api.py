@@ -56,6 +56,9 @@ class ChatResponse(BaseModel):
 class TaskRequest(BaseModel):
     task: str
 
+class SessionTitleRequest(BaseModel):
+    title: str
+
 class TaskResponse(BaseModel):
     success: bool
     iterations: int
@@ -134,6 +137,30 @@ async def create_new_session():
         ask_mode.set_session(session_id)
         current_session_id = session_id
         return {"session_id": session_id, "status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/session/{session_id}/title")
+async def rename_session(session_id: str, request: SessionTitleRequest):
+    """Rename a chat session"""
+    try:
+        result = memory.set_session_title(session_id, request.title)
+        return {"status": "updated", **result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/session/{session_id}")
+async def delete_session(session_id: str):
+    """Delete a chat session"""
+    global current_session_id
+    try:
+        memory.clear_session(session_id)
+        if current_session_id == session_id:
+            current_session_id = None
+            ask_mode.clear_history()
+        return {"status": "deleted", "session_id": session_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

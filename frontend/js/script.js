@@ -4,6 +4,8 @@
 console.log('✅ Using native Windows titlebar controls');
 
 const API_URL = 'http://localhost:8000';
+const BACKEND_RETRY_DELAY_MS = 1200;
+const BACKEND_MAX_RETRIES = 60;
 let currentMode = 'ask'; // 'ask' or 'agent'
 let currentWebSocket = null; // Store current WebSocket connection
 let isResponding = false; // Track if AI is responding
@@ -28,6 +30,12 @@ const sidebar = document.getElementById('sidebar');
 const pastSessionsList = document.getElementById('pastSessionsList');
 const newSessionBtn = document.getElementById('newSessionBtn');
 const chatTitle = document.getElementById('chatTitle');
+
+function setHeaderTitle(title) {
+    const nextTitle = (title || 'Trò chuyện mới').trim() || 'Trò chuyện mới';
+    chatTitle.textContent = nextTitle;
+    document.title = `${nextTitle} - Liemdai Copilot`;
+}
 
 function setSidebarOpen(isOpen) {
     sidebar.classList.toggle('open', isOpen);
@@ -69,6 +77,7 @@ chatModeIndicator.addEventListener('click', (e) => {
 document.addEventListener('click', () => {
     modeDropdown.classList.remove('show');
     chatModeDropdown.classList.remove('show');
+    closeSessionMenus();
 });
 
 // Mode selection (Home dropdown)
@@ -138,10 +147,14 @@ function switchToChatMode() {
     }
 }
 
-function switchToHomeMode() {
+function switchToHomeMode(options = {}) {
+    const { keepSidebarState = false } = options;
     document.body.classList.remove('chat-mode');
     document.body.classList.add('home-mode');
-    setSidebarOpen(false);
+
+    if (!keepSidebarState) {
+        setSidebarOpen(false);
+    }
 
     if (window.electronAPI?.setOverlayMode) {
         window.electronAPI.setOverlayMode('home');
@@ -156,7 +169,8 @@ setSidebarOpen(false);
 
 if (newSessionBtn) {
     newSessionBtn.addEventListener('click', async () => {
-        await startNewSession();
+        const keepSidebarState = sidebar.classList.contains('open');
+        await startNewSession(false, keepSidebarState);
     });
 }
 
@@ -435,11 +449,52 @@ function scrollToBottom() {
 }
 
 async function initSessionsUI() {
+    if (pastSessionsList) {
+        pastSessionsList.innerHTML = '<div class="conversation-item">Đang khởi động backend...</div>';
+    }
+
+    const isReady = await waitForBackendReady();
+    if (!isReady) {
+        if (pastSessionsList) {
+            pastSessionsList.innerHTML = '<div class="conversation-item">Backend chưa sẵn sàng. Vui lòng đợi...</div>';
+        }
+        return;
+    }
+
     await startNewSession(false);
     await loadPastSessions();
 }
 
-async function startNewSession(switchToChat = true) {
+async function waitForBackendReady() {
+    for (let attempt = 1; attempt <= BACKEND_MAX_RETRIES; attempt++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1000);
+            const response = await fetch(`${API_URL}/`, {
+                method: 'GET',
+                signal: controller.signal,
+                cache: 'no-store'
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                return true;
+            }
+        } catch (_error) {
+            // Backend still starting, continue retry loop.
+        }
+
+        await sleep(BACKEND_RETRY_DELAY_MS);
+    }
+
+    return false;
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function startNewSession(switchToChat = true, keepSidebarState = false) {
     try {
         const response = await fetch(`${API_URL}/new-session`, {
             method: 'POST',
@@ -449,10 +504,12 @@ async function startNewSession(switchToChat = true) {
 
         currentSessionId = data.session_id;
         chatMessages.innerHTML = '';
-        chatTitle.textContent = 'Trò chuyện mới';
+        setHeaderTitle('Trò chuyện mới');
 
         if (switchToChat) {
             switchToChatMode();
+        } else {
+            switchToHomeMode({ keepSidebarState });
         }
 
         await loadPastSessions();
@@ -475,24 +532,70 @@ async function loadPastSessions() {
         }
 
         pastSessionsList.innerHTML = sessions.map((session) => {
-            const title = (session.first_message || 'Trò chuyện mới').trim();
+            const title = (session.title || session.first_message || 'Trò chuyện mới').trim();
             const safeTitle = escapeHtml(title);
             const meta = `${session.message_count || 0} tin nhắn`;
             const isActive = session.session_id === currentSessionId;
 
             return `
                 <div class="conversation-item ${isActive ? 'active' : ''}" data-session-id="${session.session_id}">
-                    <span class="session-title">${safeTitle}</span>
-                    <span class="session-meta">${meta}</span>
+                    <div class="session-row">
+                        <div class="session-main" data-session-id="${session.session_id}">
+                            <span class="session-title">${safeTitle}</span>
+                            <span class="session-meta">${meta}</span>
+                        </div>
+                        <button class="session-more-btn" data-session-id="${session.session_id}" title="Tùy chọn">⋯</button>
+                        <div class="session-menu" data-session-id="${session.session_id}">
+                            <button class="session-menu-item" data-action="rename" data-session-id="${session.session_id}">Đổi tên</button>
+                            <button class="session-menu-item" data-action="export" data-session-id="${session.session_id}">Xuất Word</button>
+                            <button class="session-menu-item danger" data-action="delete" data-session-id="${session.session_id}">Xóa</button>
+                        </div>
+                    </div>
                 </div>
             `;
         }).join('');
 
-        pastSessionsList.querySelectorAll('.conversation-item[data-session-id]').forEach((item) => {
+        pastSessionsList.querySelectorAll('.session-main[data-session-id]').forEach((item) => {
             item.addEventListener('click', async () => {
+                if (item.closest('.conversation-item')?.classList.contains('editing')) return;
                 const sessionId = item.dataset.sessionId;
+                const selectedTitle = item.querySelector('.session-title')?.textContent?.trim() || 'Trò chuyện cũ';
                 if (!sessionId) return;
-                await openSession(sessionId);
+                await openSession(sessionId, selectedTitle);
+            });
+        });
+
+        pastSessionsList.querySelectorAll('.session-more-btn[data-session-id]').forEach((btn) => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const sessionId = btn.dataset.sessionId;
+                if (!sessionId) return;
+                const menu = pastSessionsList.querySelector(`.session-menu[data-session-id="${sessionId}"]`);
+                if (!menu) return;
+
+                const isOpen = menu.classList.contains('open');
+                closeSessionMenus();
+                if (!isOpen) {
+                    menu.classList.add('open');
+                }
+            });
+        });
+
+        pastSessionsList.querySelectorAll('.session-menu-item[data-action]').forEach((btn) => {
+            btn.addEventListener('click', async (event) => {
+                event.stopPropagation();
+                const action = btn.dataset.action;
+                const sessionId = btn.dataset.sessionId;
+                closeSessionMenus();
+                if (!sessionId || !action) return;
+
+                if (action === 'rename') {
+                    await renameSession(sessionId);
+                } else if (action === 'export') {
+                    await exportSessionToWord(sessionId);
+                } else if (action === 'delete') {
+                    await deleteSession(sessionId);
+                }
             });
         });
     } catch (error) {
@@ -500,7 +603,7 @@ async function loadPastSessions() {
     }
 }
 
-async function openSession(sessionId) {
+async function openSession(sessionId, sessionTitle = null) {
     try {
         const response = await fetch(`${API_URL}/session/${sessionId}`);
         const data = await response.json();
@@ -514,8 +617,8 @@ async function openSession(sessionId) {
             addMessage(msg.text || '', sender);
         });
 
-        const titleFromHistory = messages.find((m) => m.role === 'user')?.text || 'Trò chuyện cũ';
-        chatTitle.textContent = titleFromHistory.slice(0, 36);
+        const fallbackTitle = messages.find((m) => m.role === 'user')?.text || 'Trò chuyện cũ';
+        setHeaderTitle((sessionTitle || fallbackTitle).slice(0, 120));
 
         switchToChatMode();
         await loadPastSessions();
@@ -531,4 +634,166 @@ function escapeHtml(text) {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+}
+
+function closeSessionMenus() {
+    if (!pastSessionsList) return;
+    pastSessionsList.querySelectorAll('.session-menu.open').forEach((menu) => {
+        menu.classList.remove('open');
+    });
+}
+
+async function renameSession(sessionId) {
+    const item = pastSessionsList.querySelector(`.conversation-item[data-session-id="${sessionId}"]`);
+    const titleEl = item?.querySelector('.session-title');
+    if (!item || !titleEl) return;
+
+    const originalTitle = titleEl.textContent?.trim() || '';
+    item.classList.add('editing');
+    titleEl.setAttribute('contenteditable', 'true');
+    titleEl.setAttribute('spellcheck', 'false');
+    titleEl.focus();
+
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(titleEl);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const cleanup = () => {
+        titleEl.removeAttribute('contenteditable');
+        titleEl.removeAttribute('spellcheck');
+        item.classList.remove('editing');
+        titleEl.removeEventListener('keydown', onKeyDown);
+        titleEl.removeEventListener('blur', onBlur);
+    };
+
+    const saveRename = async () => {
+        const nextTitle = (titleEl.textContent || '').trim();
+        if (!nextTitle) {
+            titleEl.textContent = originalTitle;
+            cleanup();
+            return;
+        }
+        if (nextTitle === originalTitle) {
+            cleanup();
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/session/${sessionId}/title`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: nextTitle })
+            });
+
+            if (!response.ok) {
+                throw new Error('Rename failed');
+            }
+
+            if (sessionId === currentSessionId) {
+                setHeaderTitle(nextTitle.slice(0, 120));
+            }
+            cleanup();
+            await loadPastSessions();
+        } catch (error) {
+            titleEl.textContent = originalTitle;
+            cleanup();
+            window.alert('Không thể đổi tên đoạn chat.');
+        }
+    };
+
+    const cancelRename = () => {
+        titleEl.textContent = originalTitle;
+        cleanup();
+    };
+
+    const onKeyDown = async (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            await saveRename();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelRename();
+        }
+    };
+
+    const onBlur = async () => {
+        await saveRename();
+    };
+
+    titleEl.addEventListener('keydown', onKeyDown);
+    titleEl.addEventListener('blur', onBlur);
+}
+
+async function exportSessionToWord(sessionId) {
+    try {
+        const response = await fetch(`${API_URL}/session/${sessionId}`);
+        if (!response.ok) {
+            throw new Error('Fetch session failed');
+        }
+        const data = await response.json();
+        const messages = data.messages || [];
+
+        const title = pastSessionsList
+            .querySelector(`.conversation-item[data-session-id="${sessionId}"] .session-title`)
+            ?.textContent?.trim() || 'Doan-chat';
+
+        const bodyRows = messages.map((msg) => {
+            const role = msg.role === 'user' ? 'Nguoi dung' : 'Liemdai Copilot';
+            const text = escapeHtml(msg.text || '');
+            const time = escapeHtml((msg.timestamp || '').replace('T', ' ').slice(0, 19));
+            return `<p><strong>${role}</strong> <em>${time}</em><br/>${text}</p>`;
+        }).join('\n');
+
+        const htmlDoc = `
+            <html>
+                <head><meta charset="utf-8"></head>
+                <body>
+                    <h2>${escapeHtml(title)}</h2>
+                    ${bodyRows || '<p>Khong co noi dung.</p>'}
+                </body>
+            </html>
+        `;
+
+        const blob = new Blob(['\ufeff', htmlDoc], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${sanitizeFileName(title)}.doc`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        window.alert('Không thể xuất đoạn chat ra Word.');
+    }
+}
+
+async function deleteSession(sessionId) {
+    const confirmDelete = window.confirm('Bạn có chắc muốn xóa đoạn chat này không?');
+    if (!confirmDelete) return;
+
+    try {
+        const keepSidebarState = sidebar.classList.contains('open');
+        const response = await fetch(`${API_URL}/session/${sessionId}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) {
+            throw new Error('Delete failed');
+        }
+
+        const wasCurrent = currentSessionId === sessionId;
+        await loadPastSessions();
+
+        if (wasCurrent) {
+            await startNewSession(false, keepSidebarState);
+        }
+    } catch (error) {
+        window.alert('Không thể xóa đoạn chat.');
+    }
+}
+
+function sanitizeFileName(name) {
+    return name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Doan-chat';
 }

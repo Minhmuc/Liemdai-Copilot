@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),
+  focusWindow: () => ipcRenderer.send('window-focus'),
   setOverlayMode: (mode) => ipcRenderer.send('window-overlay-mode', mode),
   
   // Window state

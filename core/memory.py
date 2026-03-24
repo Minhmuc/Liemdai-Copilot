@@ -220,6 +220,41 @@ class Memory:
         if session_id in self.session_titles:
             del self.session_titles[session_id]
             self._save_session_titles()
+
+    def duplicate_session(self, source_session_id: str, target_session_id: str, title: Optional[str] = None) -> Dict:
+        """Duplicate all messages from source session into target session."""
+        history = self.get_session_history(source_session_id)
+        if not history:
+            raise ValueError("Source session not found or has no messages")
+
+        cloned_rows = []
+        for msg in history:
+            text = msg.get("text", "")
+            role = msg.get("role", "assistant")
+            tags = msg.get("tags", [])
+            cloned_rows.append({
+                "message_id": f"msg_{uuid.uuid4().hex[:8]}",
+                "text": text,
+                "vector": self.model.encode(text).tolist(),
+                "role": role,
+                "timestamp": datetime.now().isoformat(),
+                "session_id": target_session_id,
+                "tags": tags if isinstance(tags, list) else []
+            })
+
+        self.table.add(cloned_rows)
+
+        source_title = self.session_titles.get(source_session_id)
+        next_title = (title or "").strip() or source_title or "Trò chuyện mới"
+        self.session_titles[target_session_id] = f"Bản sao - {next_title}"[:120]
+        self._save_session_titles()
+
+        return {
+            "source_session_id": source_session_id,
+            "session_id": target_session_id,
+            "message_count": len(cloned_rows),
+            "title": self.session_titles[target_session_id]
+        }
     
     def get_latest_messages(self, session_id: str, limit: int = 10) -> List[Dict]:
         """

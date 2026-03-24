@@ -151,6 +151,21 @@ async def rename_session(session_id: str, request: SessionTitleRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/session/{session_id}/duplicate")
+async def duplicate_session(session_id: str):
+    """Duplicate an existing chat session into a new session"""
+    global current_session_id
+    try:
+        new_session_id = str(uuid.uuid4())
+        result = memory.duplicate_session(session_id, new_session_id)
+        ask_mode.set_session(new_session_id)
+        current_session_id = new_session_id
+        return {"status": "duplicated", **result}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/session/{session_id}")
 async def delete_session(session_id: str):
     """Delete a chat session"""

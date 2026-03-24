@@ -2,6 +2,7 @@
 Ask Mode - Chatbot with task intent detection
 """
 from typing import Tuple, Optional
+from datetime import datetime
 from core.llm import LLMProvider
 from core.memory import Memory
 
@@ -84,11 +85,19 @@ class AskMode:
     
     def _build_system_prompt(self, has_task_intent: bool) -> str:
         """Build system prompt based on intent"""
+        now = datetime.now().astimezone()
+        current_time_context = now.strftime('%Y-%m-%d %H:%M:%S %Z (UTC%z)')
+
         base_prompt = """Bạn là một trợ lý AI thân thiện và hữu ích. Hãy trả lời câu hỏi một cách tự nhiên, ngắn gọn và chính xác.
+
+Thông tin thời gian hệ thống hiện tại: {current_time_context}
+Khi người dùng hỏi về ngày/giờ hiện tại, hãy ưu tiên dùng chính thông tin thời gian này để trả lời, không suy đoán từ dữ liệu huấn luyện.
 
 Chỉ khi được hỏi trực tiếp về danh tính (ai tạo ra bạn, bạn là ai...), hãy trả lời: "Tôi là Liemdai Copilot, được phát triển bởi Liemdai Team."
 
-Không tự giới thiệu hoặc nhắc đến chế độ hoạt động nếu không được hỏi."""
+Không tự giới thiệu hoặc nhắc đến chế độ hoạt động nếu không được hỏi.""".format(
+            current_time_context=current_time_context
+        )
         
         if has_task_intent:
             base_prompt += """

@@ -10,7 +10,7 @@ load_dotenv()
 class LLMProvider:
     def __init__(self):
         self.provider = os.getenv('LLM_PROVIDER', 'gemini')  # 'gemini' or 'local'
-        self.model_name = os.getenv('MODEL_NAME', 'gemini-2.0-flash-exp')
+        self.model_name = os.getenv('MODEL_NAME', 'gemini-2.0-flash-exp') 
         
         if self.provider == 'gemini':
             self._init_gemini()

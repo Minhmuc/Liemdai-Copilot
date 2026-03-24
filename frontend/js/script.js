@@ -30,6 +30,8 @@ const sidebar = document.getElementById('sidebar');
 const pastSessionsList = document.getElementById('pastSessionsList');
 const newSessionBtn = document.getElementById('newSessionBtn');
 const chatTitle = document.getElementById('chatTitle');
+const homeInputContainer = document.querySelector('.home-input-container');
+const chatInputWrapper = document.querySelector('.input-wrapper');
 
 function setHeaderTitle(title) {
     const nextTitle = (title || 'Trò chuyện mới').trim() || 'Trò chuyện mới';
@@ -142,6 +144,11 @@ function switchToChatMode() {
     document.body.classList.add('chat-mode');
     setSidebarOpen(true);
 
+    resetComposerState();
+    setTimeout(() => {
+        chatInput?.focus();
+    }, 0);
+
     if (window.electronAPI?.setOverlayMode) {
         window.electronAPI.setOverlayMode('chat');
     }
@@ -156,9 +163,157 @@ function switchToHomeMode(options = {}) {
         setSidebarOpen(false);
     }
 
+    resetComposerState();
+    setTimeout(() => {
+        homeInput?.focus();
+    }, 0);
+
     if (window.electronAPI?.setOverlayMode) {
         window.electronAPI.setOverlayMode('home');
     }
+}
+
+function resetComposerState() {
+    isResponding = false;
+    typingIndicator.classList.remove('show');
+    sendBtn.classList.remove('stop');
+    sendBtn.textContent = '➤';
+
+    // Ensure text inputs are always editable after mode/session transitions.
+    homeInput.disabled = false;
+    homeInput.readOnly = false;
+    chatInput.disabled = false;
+    chatInput.readOnly = false;
+}
+
+function ensureInputReady(prefer = 'auto') {
+    resetComposerState();
+
+    const wantChat = prefer === 'chat' || (prefer === 'auto' && document.body.classList.contains('chat-mode'));
+    const target = wantChat ? chatInput : homeInput;
+
+    if (!target) return;
+
+    window.electronAPI?.focusWindow?.();
+
+    // Focus after DOM settles (sidebar/session list rerender can steal focus).
+    setTimeout(() => {
+        window.electronAPI?.focusWindow?.();
+        target.disabled = false;
+        target.readOnly = false;
+        target.focus();
+    }, 30);
+
+    setTimeout(() => {
+        target.focus();
+    }, 120);
+
+    setTimeout(() => {
+        target.focus();
+    }, 260);
+}
+
+function forceRestoreComposerFocus(prefer = 'auto') {
+    ensureInputReady(prefer);
+
+    // Extra retries protect against focus loss after sidebar/session rerender.
+    setTimeout(() => {
+        ensureInputReady(prefer);
+    }, 180);
+
+    setTimeout(() => {
+        ensureInputReady(prefer);
+    }, 420);
+}
+
+function showConfirmDialog(message) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(20, 26, 38, 0.38)';
+        overlay.style.backdropFilter = 'blur(6px)';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = '9999';
+
+        const panel = document.createElement('div');
+        panel.style.width = 'min(420px, calc(100vw - 28px))';
+        panel.style.background = 'var(--surface-color, #ffffff)';
+        panel.style.border = '1px solid var(--border-color, rgba(0, 0, 0, 0.12))';
+        panel.style.borderRadius = '14px';
+        panel.style.boxShadow = '0 20px 60px rgba(0, 0, 0, 0.22)';
+        panel.style.padding = '18px';
+
+        const text = document.createElement('p');
+        text.textContent = message;
+        text.style.margin = '0 0 16px';
+        text.style.lineHeight = '1.45';
+        text.style.color = 'var(--text-color, #111)';
+
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.justifyContent = 'flex-end';
+        actions.style.gap = '10px';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Hủy';
+        cancelBtn.style.padding = '8px 14px';
+        cancelBtn.style.borderRadius = '8px';
+        cancelBtn.style.border = '1px solid var(--border-color, rgba(0, 0, 0, 0.18))';
+        cancelBtn.style.background = 'transparent';
+        cancelBtn.style.cursor = 'pointer';
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.type = 'button';
+        confirmBtn.textContent = 'Xóa';
+        confirmBtn.style.padding = '8px 14px';
+        confirmBtn.style.borderRadius = '8px';
+        confirmBtn.style.border = 'none';
+        confirmBtn.style.background = '#c62828';
+        confirmBtn.style.color = '#fff';
+        confirmBtn.style.cursor = 'pointer';
+
+        actions.appendChild(cancelBtn);
+        actions.appendChild(confirmBtn);
+        panel.appendChild(text);
+        panel.appendChild(actions);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+
+        const cleanup = () => {
+            document.removeEventListener('keydown', onKeyDown, true);
+            overlay.remove();
+        };
+
+        const finish = (value) => {
+            cleanup();
+            resolve(value);
+        };
+
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                finish(false);
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                finish(true);
+            }
+        };
+
+        document.addEventListener('keydown', onKeyDown, true);
+        cancelBtn.addEventListener('click', () => finish(false));
+        confirmBtn.addEventListener('click', () => finish(true));
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                finish(false);
+            }
+        });
+
+        confirmBtn.focus();
+    });
 }
 
 if (window.electronAPI?.setOverlayMode) {
@@ -171,6 +326,18 @@ if (newSessionBtn) {
     newSessionBtn.addEventListener('click', async () => {
         const keepSidebarState = sidebar.classList.contains('open');
         await startNewSession(false, keepSidebarState);
+    });
+}
+
+if (homeInputContainer) {
+    homeInputContainer.addEventListener('click', () => {
+        homeInput?.focus();
+    });
+}
+
+if (chatInputWrapper) {
+    chatInputWrapper.addEventListener('click', () => {
+        chatInput?.focus();
     });
 }
 
@@ -219,11 +386,7 @@ function stopResponse() {
         currentWebSocket = null;
         addMessage('⏹️ Đã dừng', 'bot');
     }
-    // Reset UI
-    isResponding = false;
-    typingIndicator.classList.remove('show');
-    sendBtn.classList.remove('stop');
-    sendBtn.textContent = '➤';
+    resetComposerState();
 }
 
 // Send message to API
@@ -496,6 +659,8 @@ function sleep(ms) {
 
 async function startNewSession(switchToChat = true, keepSidebarState = false) {
     try {
+        stopResponse();
+
         const response = await fetch(`${API_URL}/new-session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
@@ -513,6 +678,7 @@ async function startNewSession(switchToChat = true, keepSidebarState = false) {
         }
 
         await loadPastSessions();
+        ensureInputReady(switchToChat ? 'chat' : 'home');
     } catch (error) {
         console.error('Cannot create new session:', error);
     }
@@ -547,6 +713,7 @@ async function loadPastSessions() {
                         <button class="session-more-btn" data-session-id="${session.session_id}" title="Tùy chọn">⋯</button>
                         <div class="session-menu" data-session-id="${session.session_id}">
                             <button class="session-menu-item" data-action="rename" data-session-id="${session.session_id}">Đổi tên</button>
+                                <button class="session-menu-item" data-action="duplicate" data-session-id="${session.session_id}">Nhân bản</button>
                             <button class="session-menu-item" data-action="export" data-session-id="${session.session_id}">Xuất Word</button>
                             <button class="session-menu-item danger" data-action="delete" data-session-id="${session.session_id}">Xóa</button>
                         </div>
@@ -591,6 +758,8 @@ async function loadPastSessions() {
 
                 if (action === 'rename') {
                     await renameSession(sessionId);
+                } else if (action === 'duplicate') {
+                    await duplicateSession(sessionId);
                 } else if (action === 'export') {
                     await exportSessionToWord(sessionId);
                 } else if (action === 'delete') {
@@ -605,6 +774,8 @@ async function loadPastSessions() {
 
 async function openSession(sessionId, sessionTitle = null) {
     try {
+        stopResponse();
+
         const response = await fetch(`${API_URL}/session/${sessionId}`);
         const data = await response.json();
         const messages = data.messages || [];
@@ -622,6 +793,7 @@ async function openSession(sessionId, sessionTitle = null) {
 
         switchToChatMode();
         await loadPastSessions();
+        ensureInputReady('chat');
     } catch (error) {
         addMessage('❌ Không thể tải phiên chat cũ.', 'bot');
     }
@@ -771,10 +943,13 @@ async function exportSessionToWord(sessionId) {
 }
 
 async function deleteSession(sessionId) {
-    const confirmDelete = window.confirm('Bạn có chắc muốn xóa đoạn chat này không?');
+    const confirmDelete = await showConfirmDialog('Bạn có chắc muốn xóa đoạn chat này không?');
     if (!confirmDelete) return;
 
     try {
+        stopResponse();
+        window.electronAPI?.focusWindow?.();
+
         const keepSidebarState = sidebar.classList.contains('open');
         const response = await fetch(`${API_URL}/session/${sessionId}`, {
             method: 'DELETE'
@@ -788,9 +963,42 @@ async function deleteSession(sessionId) {
 
         if (wasCurrent) {
             await startNewSession(false, keepSidebarState);
+        } else if (document.body.classList.contains('chat-mode')) {
+            forceRestoreComposerFocus('chat');
+        } else {
+            forceRestoreComposerFocus('home');
         }
     } catch (error) {
         window.alert('Không thể xóa đoạn chat.');
+        forceRestoreComposerFocus(document.body.classList.contains('chat-mode') ? 'chat' : 'home');
+    }
+}
+
+async function duplicateSession(sessionId) {
+    try {
+        stopResponse();
+        const response = await fetch(`${API_URL}/session/${sessionId}/duplicate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            throw new Error('Duplicate failed');
+        }
+
+        const data = await response.json();
+        const newSessionId = data.session_id;
+        if (!newSessionId) {
+            throw new Error('Missing duplicated session id');
+        }
+
+        const nextTitle = (data.title || 'Bản sao').trim();
+        await openSession(newSessionId, nextTitle);
+        await loadPastSessions();
+        forceRestoreComposerFocus('chat');
+    } catch (error) {
+        window.alert('Không thể nhân bản đoạn chat.');
+        forceRestoreComposerFocus(document.body.classList.contains('chat-mode') ? 'chat' : 'home');
     }
 }
 

@@ -174,6 +174,16 @@ ipcMain.on('window-close', () => {
   }
 });
 
+ipcMain.on('window-focus', () => {
+  if (mainWindow) {
+    if (!mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+    mainWindow.focus();
+    mainWindow.webContents.focus();
+  }
+});
+
 ipcMain.on('window-overlay-mode', (_event, mode) => {
   if (!mainWindow) {
     return;

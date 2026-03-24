@@ -37,9 +37,9 @@ npm start
 Electron App (main.js)
     ↓
 1. Starts Python backend (backend/api.py)
-2. Waits 3 seconds for backend to initialize
-3. Opens window with frontend/index.html
-4. Frontend connects to http://localhost:8000
+2. Opens window with frontend/index.html immediately
+3. Frontend performs backend readiness checks (retry)
+4. Initializes sessions when backend is ready
 ```
 
 ---
@@ -67,7 +67,8 @@ taskkill /PID <PID> /F
 
 1. Check DevTools (Ctrl+Shift+I)
 2. Verify backend is running
-3. Check API connection at http://localhost:8000/
+3. Wait for retry flow to complete (no manual Ctrl+R needed)
+4. Check API connection at http://localhost:8000/
 
 ---
 
@@ -119,6 +120,7 @@ Executable will be in `desktop/dist/`.
 
 - ✅ Native desktop app (not browser)
 - ✅ Auto-starts Python backend
+- ✅ Frontend auto-retries while backend is warming up
 - ✅ Application menu (File/Edit/View/Help)
 - ✅ DevTools for debugging
 - ✅ Graceful shutdown (kills backend)

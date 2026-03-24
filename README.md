@@ -5,7 +5,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![AI Model](https://img.shields.io/badge/Model-Gemini%20Flash%20%7C%20Moondream2-orange?logo=google-gemini&logoColor=white)](https://ai.google.dev/)
+[![AI Model](https://img.shields.io/badge/Model-Gemini%202.0%20Flash%20%7C%20Local%20Qwen-orange?logo=google-gemini&logoColor=white)](https://ai.google.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/windows/)
 
@@ -28,17 +28,17 @@
 
 ### 🌟 Tại sao chọn Liemdai Copilot?
 
-* **Frontend/Backend Architecture:** Kiến trúc tách biệt với Web UI modern và REST API backend (FastAPI).
-* **Hybrid Intelligence:** Kết hợp sức mạnh suy luận của **Gemini 1.5 Flash** (Cloud) và tốc độ xử lý hình ảnh của **Moondream2** (Local).
-* **Tối ưu phần cứng:** Chạy mượt mà trên Laptop cá nhân (RTX 3060 trở lên) mà không gây treo máy.
+* **Desktop-First Architecture:** Ứng dụng desktop Electron + backend FastAPI tách biệt, khởi động tự động.
+* **Flexible LLM:** Hỗ trợ **Gemini 2.0 Flash** (Cloud) hoặc model local tùy cấu hình.
+* **Persistent Session Memory:** Lưu lịch sử hội thoại bằng LanceDB, có danh sách phiên, đổi tên/xóa/xuất chat.
 * **An toàn tuyệt đối:** Chế độ `Safe Mode` luôn hỏi ý kiến bạn trước khi thực thi các lệnh nhạy cảm (Xóa file, Shutdown).
 
 ### 🛠️ Kiến trúc hệ thống
 
 **Frontend/Backend Separation:**
-- **Frontend:** Modern web UI (HTML/CSS/JS) - giao diện giống Microsoft Copilot
+- **Frontend:** Electron desktop UI (HTML/CSS/JS)
 - **Backend:** FastAPI REST API + WebSocket - xử lý logic và LLM
-- **Core:** Shared business logic (Ask Mode, Agent Mode, Executor)
+- **Core:** Shared business logic (Ask Mode, Agent Mode, Executor, Memory)
 
 ```mermaid
 graph TD;
@@ -58,16 +58,16 @@ graph TD;
 
 | Tính năng | Mô tả | Công nghệ |
 |-----------|-------|-----------|
-| 🌐 Web UI | Giao diện web modern giống MS Copilot | `HTML`, `JavaScript`, `FastAPI` |
+| 🖥️ Desktop UI | Ứng dụng desktop giống MS Copilot | `Electron`, `HTML`, `JavaScript` |
 | 🤖 Code Interpreter | Tự viết code Python để giải quyết vấn đề | `subprocess`, `exec` |
 | 🔌 REST API | Backend API với WebSocket support | `FastAPI`, `Uvicorn` |
-| 👀 AI Vision | Nhìn màn hình và tìm lỗi/nút bấm | `moondream2` |
+| 🧠 Session Memory | Lưu và truy xuất phiên chat dài hạn | `LanceDB`, `sentence-transformers` |
 
 ### 🚀 Cài đặt & Sử dụng
 
 #### 1. Yêu cầu tiên quyết
 - Python 3.10 trở lên
-- (Khuyên dùng) Card đồ họa NVIDIA nếu muốn chạy Local Vision Model
+- Node.js 18 trở lên (để chạy Electron desktop app)
 
 #### 2. Cài đặt
 
@@ -96,7 +96,18 @@ SAFE_MODE=true
 
 #### 4. Chạy chương trình
 
-**Option A: Web UI (Khuyên dùng)**
+**Option A: Desktop App (Khuyên dùng)**
+
+```bash
+# Chạy ứng dụng desktop (Electron)
+cd desktop
+npm install
+npm start
+```
+
+Ứng dụng sẽ tự khởi động backend Python và tự retry khi backend chưa sẵn sàng.
+
+**Option B: Web UI / Backend rời (dùng để dev/debug)**
 
 ```bash
 # Terminal 1: Chạy backend server
@@ -107,15 +118,16 @@ python backend/api.py
 # hoặc dùng Live Server extension trong VS Code
 ```
 
-**Option B: CLI (Giao diện terminal)**
+**Option C: CLI (Giao diện terminal)**
 
 ```bash
 python cli.py
 ```
 
-**� API Documentation:**
+**📚 API Documentation:**
 - Swagger UI: http://localhost:8000/docs (khi backend đang chạy)
 - WebSocket endpoint: ws://localhost:8000/ws/chat
+- Session APIs: `GET /sessions`, `GET /session/{session_id}`, `POST /new-session`, `PATCH /session/{session_id}/title`, `DELETE /session/{session_id}`
 - Chi tiết: [docs/QUICKSTART.md](docs/QUICKSTART.md)
 
 ### 💡 Ví dụ thực tế
@@ -152,17 +164,17 @@ python cli.py
 
 ### 🌟 Why Liemdai Copilot?
 
-* **Frontend/Backend Architecture:** Separated architecture with modern Web UI and REST API backend (FastAPI).
-* **Hybrid Intelligence:** Combines the reasoning power of **Gemini 1.5 Flash** (Cloud) and the image processing speed of **Moondream2** (Local).
-* **Hardware Optimized:** Runs smoothly on laptops (RTX 3060+) without freezing.
+* **Desktop-First Architecture:** Electron desktop app + separated FastAPI backend with auto startup.
+* **Flexible LLM:** Supports **Gemini 2.0 Flash** (Cloud) or local model based on your config.
+* **Persistent Session Memory:** Stores chat sessions with LanceDB, including list/rename/delete/export actions.
 * **Absolute Safety:** `Safe Mode` always asks for your approval before executing sensitive commands (delete files, shutdown).
 
 ### 🛠️ System Architecture
 
 **Frontend/Backend Separation:**
-- **Frontend:** Modern web UI (HTML/CSS/JS) - Microsoft Copilot-inspired design
+- **Frontend:** Electron desktop UI (HTML/CSS/JS)
 - **Backend:** FastAPI REST API + WebSocket - handles logic and LLM
-- **Core:** Shared business logic (Ask Mode, Agent Mode, Executor)
+- **Core:** Shared business logic (Ask Mode, Agent Mode, Executor, Memory)
 
 ```mermaid
 graph TD;
@@ -182,13 +194,11 @@ graph TD;
 
 | Feature | Description | Technology |
 |---------|-------------|------------|
-| 🌐 Web UI | Modern web interface like MS Copilot | `HTML`, `JavaScript`, `FastAPI` |
+| 🖥️ Desktop UI | Desktop interface like MS Copilot | `Electron`, `HTML`, `JavaScript` |
 | 🤖 Code Interpreter | Automatically writes Python code to solve problems | `subprocess`, `exec` |
 | 🔌 REST API | Backend API with WebSocket support | `FastAPI`, `Uvicorn` |
-| 🌐 Web Automation | Controls Chrome, logs into Facebook/Gmail | `playwright`, `selenium` |
-| 📄 Office Automation | Creates Word docs, Excel reports | `python-docx`, `openpyxl` |
-| 💻 Dev Assistant | Creates projects, git clone, setup environment | `os`, `git` |
-| 👀 AI Vision | Reads screen to find errors/buttons | `moondream2` |
+| 🧠 Session Memory | Long-term session storage and retrieval | `LanceDB`, `sentence-transformers` |
+| 📄 Chat Export | Export chat session to Word | `python-docx` / `.doc` export |
 
 ### 🚀 Quick Start
 
@@ -217,7 +227,18 @@ SAFE_MODE=true
 
 #### 3. Run
 
-**Option A: Web UI (Recommended)**
+**Option A: Desktop App (Recommended)**
+
+```bash
+# Run desktop application (Electron)
+cd desktop
+npm install
+npm start
+```
+
+The app auto-starts Python backend and retries until backend is ready.
+
+**Option B: Web UI / Backend standalone (for dev/debug)**
 
 ```bash
 # Terminal 1: Start backend server
@@ -228,15 +249,16 @@ python backend/api.py
 # or use Live Server extension in VS Code
 ```
 
-**Option B: CLI (Terminal interface)**
+**Option C: CLI (Terminal interface)**
 
 ```bash
 python cli.py
 ```
 
-**� API Documentation:**
+**📚 API Documentation:**
 - Swagger UI: http://localhost:8000/docs (when backend is running)
 - WebSocket endpoint: ws://localhost:8000/ws/chat
+- Session APIs: `GET /sessions`, `GET /session/{session_id}`, `POST /new-session`, `PATCH /session/{session_id}/title`, `DELETE /session/{session_id}`
 - Details: [docs/QUICKSTART.md](docs/QUICKSTART.md)
 
 ### 💡 Real-world Examples

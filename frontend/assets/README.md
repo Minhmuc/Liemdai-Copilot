@@ -3,7 +3,7 @@
 ## Required Images
 
 ### 1. Favicon
-- **File:** `favicon.ico` or `favicon.png`
+- **File:** `favicon.png` (currently used) or `favicon.ico`
 - **Size:** 32x32 or 64x64 pixels
 - **Format:** ICO, PNG, or SVG
 
@@ -28,8 +28,8 @@
 ## How to Add Your Images
 
 1. Place your images in this folder
-2. The app will automatically detect and use them
-3. If images are missing, app will use default colors/emojis
+2. Keep these names to match current code references: `favicon.png`, `icon.png`, `background.jpg`
+3. If images are missing, app falls back to default colors/emojis where available
 
 ## Quick Start (No Design Skills?)
 

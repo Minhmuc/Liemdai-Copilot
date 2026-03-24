@@ -3,8 +3,9 @@
 ## 📋 Prerequisites
 
 - Python 3.10 or higher
+- Node.js 18+ (for Electron desktop app)
 - Gemini API key (free at https://aistudio.google.com/app/apikey)
-- Modern web browser (for Web UI)
+- Optional: Modern web browser (for standalone web UI debug)
 
 ---
 
@@ -46,7 +47,27 @@ SAFE_MODE=true
 
 ---
 
-## 🌐 Run Web UI (Recommended)
+## 🖥️ Run Desktop App (Recommended)
+
+### Step 1: Install desktop dependencies
+
+```bash
+cd desktop
+npm install
+```
+
+### Step 2: Start desktop app
+
+```bash
+cd desktop
+npm start
+```
+
+Desktop app will auto-start Python backend and retry until backend is ready.
+
+---
+
+## 🌐 Run Web UI (Dev/Debug)
 
 ### Step 1: Start Backend Server
 
@@ -64,7 +85,7 @@ You should see:
 ================================================================
 ```
 
-### Step 2: Open Frontend
+### Step 2: Open Frontend (optional for debug)
 
 **Option A: Using Live Server (VS Code)**
 1. Install "Live Server" extension
@@ -80,6 +101,16 @@ You should see:
 1. In Web UI, type: **"Xin chào, bạn là ai?"**
 2. Switch to Agent Mode: Click 🤖 button
 3. Try: **"Create a text file with Hello World"**
+
+### Session APIs (for memory UI)
+
+```bash
+# List sessions
+curl http://localhost:8000/sessions
+
+# Create new session
+curl -X POST http://localhost:8000/new-session
+```
 
 ---
 
@@ -149,15 +180,22 @@ Desktop-Copilot/
 ├── backend/
 │   └── api.py              # FastAPI server ⭐
 │
+├── desktop/
+│   ├── main.js             # Electron main process ⭐
+│   └── package.json
+│
 ├── core/                   # Shared business logic
 │   ├── llm.py              # LLM provider wrapper
-│   ├── ask_mode.py         # Chatbot engine│   ├── agent_mode.py        # Agent engine
+│   ├── ask_mode.py         # Chatbot engine
+│   ├── agent_mode.py       # Agent engine
+│   ├── memory.py           # Persistent session memory
 │   └── executor.py         # Code executor
 │
 ├── frontend/
-│   └── index.html          # Web UI ⭐
+│   └── index.html          # Desktop renderer UI ⭐
 │
-├── docs/│   ├── ARCHITECTURE.md     # Design docs
+├── docs/
+│   ├── ARCHITECTURE.md     # Design docs
 │   └── QUICKSTART.md       # This file
 │
 ├── cli.py                  # CLI entry point ⭐
@@ -238,8 +276,9 @@ uvicorn backend.api:app --port 8001
 ### Frontend can't connect
 
 1. ✅ Verify backend is running: http://localhost:8000/
-2. ✅ Check browser console for CORS errors
-3. ✅ Ensure API_URL in `frontend/index.html` is correct
+2. ✅ Desktop mode: wait for auto-retry (no need Ctrl+R)
+3. ✅ Web debug mode: check browser console for CORS errors
+4. ✅ Ensure API_URL in frontend/js/script.js is correct
 
 ### Gemini API errors
 
@@ -278,6 +317,7 @@ python --version  # Should be 3.10+
 ## 📚 Additional Resources
 
 - **API Documentation:** http://localhost:8000/docs (when backend is running)
+- **Session APIs:** `/sessions`, `/session/{session_id}`, `/new-session`, `/session/{session_id}/title`, `/session/{session_id}` (DELETE)
 - **Architecture Guide:** [docs/ARCHITECTURE.md](ARCHITECTURE.md)
 - **Main README:** [../README.md](../README.md)
 

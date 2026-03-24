@@ -5,21 +5,26 @@
 ```
 Desktop-Copilot/
 ├── backend/              # FastAPI Backend Server
-│   ├── app.py           # Main API server
-│   └── requirements.txt # Backend dependencies
+│   └── api.py            # Main API server
 │
-├── frontend/            # Frontend options
-│   ├── web/             # Web frontend (HTML/JS)
-│   │   └── index.html
-│   └── desktop/         # Desktop app (Flet - optional)
+├── desktop/              # Electron desktop host
+│   ├── main.js
+│   ├── preload.js
+│   └── package.json
+│
+├── frontend/             # Renderer UI (HTML/CSS/JS)
+│   ├── index.html
+│   ├── css/
+│   └── js/
 │
 ├── core/                # Core logic (shared by CLI & API)
 │   ├── llm.py
 │   ├── ask_mode.py
 │   ├── agent_mode.py
+│   ├── memory.py
 │   └── executor.py
 │
-├── main.py              # CLI version (legacy)
+├── cli.py               # CLI entry point
 └── README.md
 ```
 
@@ -29,10 +34,15 @@ Desktop-Copilot/
 
 ### 1. Cài đặt Dependencies
 
-**Backend:**
+**Python backend:**
 ```bash
-cd backend
 pip install -r requirements.txt
+```
+
+**Desktop app:**
+```bash
+cd desktop
+npm install
 ```
 
 ### 2. Cấu hình (.env)
@@ -47,11 +57,11 @@ SAFE_MODE=true
 ### 3. Chạy Backend Server
 
 ```bash
-# Từ folder backend/
-python app.py
+# Từ root folder
+python backend/api.py
 
-# hoặc trực tiếp với uvicorn:
-uvicorn app:app --reload
+# hoặc với uvicorn
+uvicorn backend.api:app --reload
 ```
 
 Server sẽ chạy tại: `http://localhost:8000`
@@ -60,7 +70,16 @@ Server sẽ chạy tại: `http://localhost:8000`
 
 ### 4. Chạy Frontend
 
-#### Option A: Web Frontend (Đơn giản nhất)
+#### Option A: Desktop App (Khuyên dùng)
+
+```bash
+cd desktop
+npm start
+```
+
+Desktop app tự chạy backend Python và frontend renderer.
+
+#### Option B: Web Frontend (để debug)
 
 1. Tạo file HTML:
 ```bash
@@ -71,12 +90,7 @@ python create_web.py
 2. Mở `frontend/web/index.html` trong browser
    - Hoặc dùng Live Server extension trong VS Code
 
-#### Option B: Desktop Frontend (Flet - Đang phát triển)
-
-```bash
-cd frontend/desktop
-python desktop_app.py
-```
+Mở `frontend/index.html` trực tiếp trong browser (khi backend đã chạy).
 
 ---
 
@@ -95,17 +109,28 @@ Response: {"status": "online", "version": "1.0.0"}
 POST /chat
 Body: {
     "message": "Xin chào, bạn là ai?",
-    "mode": "ask"
+    "mode": "ask",
+    "session_id": "optional_session_id"
 }
 
 Response: {
     "response": "Tôi là Liemdai Copilot...",
     "mode": "ask",
-    "has_task_intent": false
+    "has_task_intent": false,
+    "session_id": "generated_or_existing_session_id"
 }
 ```
 
-#### 3. Execute Task (Agent Mode)
+#### 3. Session Management
+```bash
+GET    /sessions
+GET    /session/{session_id}
+POST   /new-session
+PATCH  /session/{session_id}/title
+DELETE /session/{session_id}
+```
+
+#### 4. Execute Task (Agent Mode)
 ```bash
 POST /execute
 Body: {
@@ -120,13 +145,13 @@ Response: {
 }
 ```
 
-#### 4. Get History
+#### 5. Get History
 ```bash
 GET /history
 Response: {"history": [...]}
 ```
 
-#### 5. Reset History
+#### 6. Reset History
 ```bash
 POST /reset
 Response: {"status": "reset", "message": "Conversation history cleared"}
@@ -158,19 +183,15 @@ Response: {"status": "reset", "message": "Conversation history cleared"}
 
 ## 🎨 Frontend Options
 
-### 1. **Web Frontend** (Recommended)
-- ✅ Dễ nhất, không cần cài đặt gì thêm
-- ✅ Chạy trên bất kỳ browser nào
-- ✅ UI giống Microsoft Copilot
-- ✅ Responsive design
-
-### 2. **Desktop Frontend (Flet)**
+### 1. **Desktop Frontend (Electron)** (Recommended)
 - ✅ Native desktop app
-- ✅ Cross-platform (Windows/Mac/Linux)
-- ⏳ Đang phát triển
+- ✅ Auto-start backend
+- ✅ Startup retry + loading flow
+- ✅ Windows titlebar overlay integration
 
-### 3. **Mobile (React Native/Flutter)**
-- ⏳ Tương lai
+### 2. **Web Frontend (Debug)**
+- ✅ Dễ debug HTML/CSS/JS
+- ✅ Dùng cùng backend API
 
 ---
 
@@ -205,17 +226,11 @@ print(response.json())
 
 ## 📦 Deployment
 
-### Docker (Tương lai)
+### Gợi ý đóng gói desktop
 
-```dockerfile
-# Dockerfile for backend
-FROM python:3.11-slim
-WORKDIR /app
-COPY backend/requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000"]
-```
+- Build Electron app từ folder `desktop`
+- Bundle backend Python cùng ứng dụng
+- Ưu tiên Windows trước (môi trường hiện tại)
 
 ---
 

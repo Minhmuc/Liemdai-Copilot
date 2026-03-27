@@ -41,6 +41,29 @@ class Memory:
             json.dumps(self.session_titles, ensure_ascii=False, indent=2),
             encoding="utf-8"
         )
+
+    def _best_effort_compact(self):
+        """Try to compact/cleanup table files when supported by current LanceDB version."""
+        try:
+            optimize = getattr(self.table, "optimize", None)
+            if callable(optimize):
+                optimize()
+        except Exception:
+            pass
+
+        try:
+            compact_files = getattr(self.table, "compact_files", None)
+            if callable(compact_files):
+                compact_files()
+        except Exception:
+            pass
+
+        try:
+            cleanup = getattr(self.table, "cleanup_old_versions", None)
+            if callable(cleanup):
+                cleanup()
+        except Exception:
+            pass
     
     def _init_table(self):
         """Initialize LanceDB table for messages"""
@@ -206,20 +229,35 @@ class Memory:
             "title": self.session_titles[session_id]
         }
     
-    def clear_session(self, session_id: str):
-        """Delete all messages from a session"""
+    def clear_session(self, session_id: str) -> Dict:
+        """Delete all messages from a session and return deletion stats."""
+        removed_rows = 0
+
         if self.table.count_rows() == 0:
             if session_id in self.session_titles:
                 del self.session_titles[session_id]
                 self._save_session_titles()
-            return
+            return {
+                "session_id": session_id,
+                "removed_rows": 0,
+                "status": "deleted"
+            }
+
+        removed_rows = len(self.get_session_history(session_id))
 
         safe_session_id = session_id.replace("'", "''")
         self.table.delete(f"session_id = '{safe_session_id}'")
+        self._best_effort_compact()
 
         if session_id in self.session_titles:
             del self.session_titles[session_id]
             self._save_session_titles()
+
+        return {
+            "session_id": session_id,
+            "removed_rows": removed_rows,
+            "status": "deleted"
+        }
 
     def duplicate_session(self, source_session_id: str, target_session_id: str, title: Optional[str] = None) -> Dict:
         """Duplicate all messages from source session into target session."""
@@ -269,3 +307,20 @@ class Memory:
         """
         history = self.get_session_history(session_id)
         return history[-limit:] if history else []
+
+    def clear_all_data(self) -> Dict:
+        """Delete all messages and session titles from storage."""
+        removed_rows = 0
+
+        if self.table.count_rows() > 0:
+            removed_rows = int(self.table.count_rows())
+            self.table.delete("message_id != ''")
+            self._best_effort_compact()
+
+        self.session_titles = {}
+        self._save_session_titles()
+
+        return {
+            "removed_rows": removed_rows,
+            "status": "cleared"
+        }

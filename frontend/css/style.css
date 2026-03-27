@@ -174,6 +174,18 @@ body.chat-mode {
     border-color: #9ca3af;
 }
 
+.clear-db-btn {
+    margin-top: 8px;
+    border-color: #fecaca;
+    color: #991b1b;
+    background: #fff7f7;
+}
+
+.clear-db-btn:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+}
+
 .conversation-item {
     padding: 10px 12px;
     border-radius: 8px;
@@ -756,10 +768,18 @@ body.chat-mode .chat-container {
 }
 
 .message.bot .message-bubble {
-    background: #ffffff;
+    background: transparent;
     color: #1F1F1F;
-    border-bottom-left-radius: 4px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    border-bottom-left-radius: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
+.bot-plain-text {
+    white-space: pre-wrap;
+    font-size: 15px;
+    line-height: 1.62;
+    color: #1f2937;
 }
 
 .message-actions {
@@ -936,4 +956,42 @@ body.chat-mode .footer {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #999;
+}
+
+/* Realtime streaming chat */
+.agent-stream .message-content {
+    max-width: 90%;
+}
+
+.agent-stream-text {
+    white-space: pre-wrap;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #1f2937;
+}
+
+.agent-stream-cursor {
+    margin-left: 2px;
+    color: #124785;
+    animation: streamCursorBlink 0.85s steps(1, end) infinite;
+}
+
+.agent-stream.finished .agent-stream-bubble {
+    opacity: 0.96;
+}
+
+.agent-stream.finished .agent-stream-panel {
+    opacity: 0.96;
+}
+
+@keyframes streamCursorBlink {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
 }

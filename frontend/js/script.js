@@ -10,6 +10,10 @@ let currentMode = 'ask'; // 'ask' or 'agent'
 let currentWebSocket = null; // Store current WebSocket connection
 let isResponding = false; // Track if AI is responding
 let currentSessionId = null;
+let activeLiveStatusMessage = null;
+let activeLiveStatusBody = null;
+let activeLiveStatusCursor = null;
+let activeLiveStatusTyping = Promise.resolve();
 
 const homeScreen = document.getElementById('homeScreen');
 const chatContainer = document.getElementById('chatContainer');
@@ -29,6 +33,7 @@ const hamburgerBtn = document.getElementById('hamburgerBtn');
 const sidebar = document.getElementById('sidebar');
 const pastSessionsList = document.getElementById('pastSessionsList');
 const newSessionBtn = document.getElementById('newSessionBtn');
+const clearAllDataBtn = document.getElementById('clearAllDataBtn');
 const chatTitle = document.getElementById('chatTitle');
 const homeInputContainer = document.querySelector('.home-input-container');
 const chatInputWrapper = document.querySelector('.input-wrapper');
@@ -329,6 +334,12 @@ if (newSessionBtn) {
     });
 }
 
+if (clearAllDataBtn) {
+    clearAllDataBtn.addEventListener('click', async () => {
+        await clearAllData();
+    });
+}
+
 if (homeInputContainer) {
     homeInputContainer.addEventListener('click', () => {
         homeInput?.focus();
@@ -382,17 +393,109 @@ function useSuggestion(text) {
 // Stop current response
 function stopResponse() {
     if (currentWebSocket) {
+        if (currentWebSocket.readyState === WebSocket.OPEN) {
+            try {
+                currentWebSocket.send(JSON.stringify({ type: 'stop' }));
+            } catch (_err) {
+                // Best-effort stop signal.
+            }
+        }
         currentWebSocket.close();
         currentWebSocket = null;
-        addMessage('⏹️ Đã dừng', 'bot');
+        endLiveStatusMessage();
+        addMessage('⏹️ Đã dừng', 'bot', { stream: true });
     }
     resetComposerState();
+}
+
+async function typeTextByChunks(target, text, delayMs = 10) {
+    if (!target || !text) return;
+
+    const size = 1;
+    for (let i = 0; i < text.length; i += size) {
+        target.textContent += text.slice(i, i + size);
+        scrollToBottom();
+        await sleep(delayMs);
+    }
+}
+
+function normalizeAssistantTone(text) {
+    if (!text) return text;
+
+    return text
+        .replace(/\b[Mm]ình\b/g, (m) => (m === 'Mình' ? 'Tôi' : 'tôi'))
+        .replace(/\b[Mm]ình\s+sẽ\b/g, (m) => (m.startsWith('M') ? 'Tôi sẽ' : 'tôi sẽ'))
+        .replace(/\b[Mm]ình\s+đang\b/g, (m) => (m.startsWith('M') ? 'Tôi đang' : 'tôi đang'));
+}
+
+function startLiveStatusMessage(initialText = '') {
+    endLiveStatusMessage();
+
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message bot';
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+
+    const plain = document.createElement('div');
+    plain.className = 'bot-plain-text';
+
+    const body = document.createElement('span');
+    body.className = 'bot-plain-body';
+
+    const cursor = document.createElement('span');
+    cursor.className = 'agent-stream-cursor';
+    cursor.textContent = '▍';
+
+    plain.appendChild(body);
+    plain.appendChild(cursor);
+    contentDiv.appendChild(plain);
+    messageDiv.appendChild(contentDiv);
+
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+
+    activeLiveStatusMessage = messageDiv;
+    activeLiveStatusBody = body;
+    activeLiveStatusCursor = cursor;
+    activeLiveStatusTyping = Promise.resolve();
+
+    if (initialText) {
+        appendLiveStatusMessage(initialText);
+    }
+}
+
+function appendLiveStatusMessage(text) {
+    if (!text || !activeLiveStatusBody) return activeLiveStatusTyping;
+
+    const normalized = normalizeAssistantTone(`${text}`.trim());
+    if (!normalized) return activeLiveStatusTyping;
+
+    activeLiveStatusTyping = activeLiveStatusTyping.then(
+        () => typeTextByChunks(activeLiveStatusBody, `${normalized}\n`, 14)
+    );
+
+    return activeLiveStatusTyping;
+}
+
+function endLiveStatusMessage() {
+    if (!activeLiveStatusMessage) return;
+
+    activeLiveStatusTyping = activeLiveStatusTyping.then(() => {
+        if (activeLiveStatusCursor) {
+            activeLiveStatusCursor.remove();
+        }
+        activeLiveStatusMessage.classList.add('finished');
+        activeLiveStatusMessage = null;
+        activeLiveStatusBody = null;
+        activeLiveStatusCursor = null;
+    });
 }
 
 // Send message to API
 async function sendMessage(message) {
     // Add user message
-    addMessage(message, 'user');
+    await addMessage(message, 'user');
 
     // Show typing indicator and change send button to stop
     isResponding = true;
@@ -413,7 +516,7 @@ async function sendMessage(message) {
             if (data.session_id) {
                 currentSessionId = data.session_id;
             }
-            addMessage(data.response, 'bot');
+            await addMessage(data.response, 'bot', { stream: true });
             await loadPastSessions();
             
             // Reset UI for ask mode
@@ -426,7 +529,7 @@ async function sendMessage(message) {
             await executeAgentTask(message);
         }
     } catch (error) {
-        addMessage('❌ Không thể kết nối backend. Đảm bảo server đang chạy tại http://localhost:8000', 'bot');
+        await addMessage('❌ Không thể kết nối backend. Đảm bảo server đang chạy tại http://localhost:8000', 'bot', { stream: true });
         // Reset UI on error
         isResponding = false;
         typingIndicator.classList.remove('show');
@@ -439,43 +542,56 @@ async function sendMessage(message) {
 async function executeAgentTask(task) {
     const ws = new WebSocket('ws://localhost:8000/ws/chat');
     currentWebSocket = ws; // Store reference for stop button
-    
+
     ws.onopen = () => {
+        startLiveStatusMessage(`🧠 Tôi đang xử lý yêu cầu: ${task}`);
+        appendLiveStatusMessage('🔌 Đã kết nối, tôi bắt đầu thực hiện ngay.');
+
         ws.send(JSON.stringify({
             type: 'chat',
             message: task,
-            mode: 'agent'
+            mode: 'agent',
+            session_id: currentSessionId
         }));
     };
-    
-    ws.onmessage = (event) => {
+
+    ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
-        
+
+        if (data.session_id) {
+            currentSessionId = data.session_id;
+        }
+
         if (data.type === 'status') {
-            // Show status message
-            addMessage(data.content, 'bot');
+            await appendLiveStatusMessage(data.content);
         } else if (data.type === 'warning') {
-            // Show warning message (dangerous operations skipped)
-            addMessage(data.content, 'bot');
+            await appendLiveStatusMessage(`⚠️ ${data.content || 'Tôi có một lưu ý nhỏ về an toàn khi xử lý yêu cầu này.'}`);
         } else if (data.type === 'confirmation_request') {
-            // Show confirmation UI with buttons
-            addConfirmationMessage(data.code, data.content, ws);
+            await appendLiveStatusMessage('🛡️ Tôi cần bạn xác nhận trước khi tiếp tục.');
+            addConfirmationMessage(data.code, data.content, ws, data.request_id);
         } else if (data.type === 'response') {
-            // Final response
-            addMessage(data.content, 'bot');
+            await appendLiveStatusMessage('✅ Hoàn tất bước xử lý, tôi gửi bạn phần tóm tắt ngay dưới đây.');
+            endLiveStatusMessage();
+            await addMessage(data.content, 'bot', { stream: true });
+            await loadPastSessions();
             if (data.done) {
                 ws.close();
                 currentWebSocket = null;
             }
         } else if (data.type === 'error') {
-            addMessage(data.content, 'bot');
+            await appendLiveStatusMessage('❌ Trong lúc xử lý có lỗi xảy ra.');
+            endLiveStatusMessage();
+            await addMessage(data.content, 'bot', { stream: true });
+            await loadPastSessions();
             ws.close();
             currentWebSocket = null;
         }
     };
-    
-    ws.onerror = (error) => {
-        addMessage('❌ WebSocket error. Đảm bảo server đang chạy.', 'bot');
+
+    ws.onerror = async (_error) => {
+        await appendLiveStatusMessage('❌ Mất kết nối realtime với backend.');
+        endLiveStatusMessage();
+        await addMessage('❌ WebSocket error. Đảm bảo server đang chạy.', 'bot', { stream: true });
         ws.close();
         currentWebSocket = null;
         // Reset UI
@@ -484,8 +600,9 @@ async function executeAgentTask(task) {
         sendBtn.classList.remove('stop');
         sendBtn.textContent = '➤';
     };
-    
+
     ws.onclose = () => {
+        endLiveStatusMessage();
         currentWebSocket = null;
         // Reset UI
         isResponding = false;
@@ -496,7 +613,7 @@ async function executeAgentTask(task) {
 }
 
 // Add confirmation message with action buttons
-function addConfirmationMessage(code, message, ws) {
+function addConfirmationMessage(code, message, ws, requestId = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message bot';
 
@@ -534,25 +651,34 @@ function addConfirmationMessage(code, message, ws) {
     const confirmBtn = actionsDiv.querySelector('.confirm-btn');
     const skipBtn = actionsDiv.querySelector('.skip-btn');
 
+    let resolved = false;
+    const resolveAndRemove = (confirmed) => {
+        if (resolved) return;
+        resolved = true;
+
+        appendLiveStatusMessage(
+            confirmed ? 'Bạn đã xác nhận thao tác nhạy cảm.' : 'Bạn đã bỏ qua thao tác nhạy cảm.',
+        );
+
+        messageDiv.remove();
+        ws.send(JSON.stringify({
+            type: 'confirm',
+            confirmed,
+            request_id: requestId
+        }));
+    };
+
     confirmBtn.addEventListener('click', () => {
-        ws.send(JSON.stringify({ type: 'confirm', confirmed: true }));
-        confirmBtn.disabled = true;
-        skipBtn.disabled = true;
-        confirmBtn.style.opacity = '0.5';
-        skipBtn.style.opacity = '0.5';
+        resolveAndRemove(true);
     });
 
     skipBtn.addEventListener('click', () => {
-        ws.send(JSON.stringify({ type: 'confirm', confirmed: false }));
-        confirmBtn.disabled = true;
-        skipBtn.disabled = true;
-        confirmBtn.style.opacity = '0.5';
-        skipBtn.style.opacity = '0.5';
+        resolveAndRemove(false);
     });
 }
 
 // Add message to chat
-function addMessage(text, sender) {
+async function addMessage(text, sender, options = {}) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}`;
 
@@ -563,11 +689,32 @@ function addMessage(text, sender) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
 
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble';
-    bubble.textContent = text;
+    const messageText = sender === 'bot' ? normalizeAssistantTone(text) : text;
 
-    contentDiv.appendChild(bubble);
+    if (sender === 'user') {
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        bubble.textContent = messageText;
+        contentDiv.appendChild(bubble);
+    } else {
+        const plain = document.createElement('div');
+        plain.className = 'bot-plain-text';
+        const plainBody = document.createElement('span');
+        plainBody.className = 'bot-plain-body';
+        plain.appendChild(plainBody);
+        contentDiv.appendChild(plain);
+
+        if (options.stream) {
+            const cursor = document.createElement('span');
+            cursor.className = 'agent-stream-cursor';
+            cursor.textContent = '▍';
+            plain.appendChild(cursor);
+            await typeTextByChunks(plainBody, messageText, 9);
+            cursor.remove();
+        } else {
+            plainBody.textContent = messageText;
+        }
+    }
 
     // Add action buttons for bot messages
     if (sender === 'bot') {
@@ -599,8 +746,8 @@ function dislikeMessage(btn) {
 }
 
 function copyMessage(btn) {
-    const bubble = btn.closest('.message-content').querySelector('.message-bubble');
-    navigator.clipboard.writeText(bubble.textContent);
+    const content = btn.closest('.message-content').querySelector('.message-bubble, .bot-plain-body, .agent-stream-text');
+    navigator.clipboard.writeText(content ? content.textContent : '');
     btn.textContent = '✓ Đã sao chép';
     setTimeout(() => {
         btn.innerHTML = '📋 Sao chép';
@@ -957,6 +1104,7 @@ async function deleteSession(sessionId) {
         if (!response.ok) {
             throw new Error('Delete failed');
         }
+        const payload = await response.json();
 
         const wasCurrent = currentSessionId === sessionId;
         await loadPastSessions();
@@ -967,6 +1115,11 @@ async function deleteSession(sessionId) {
             forceRestoreComposerFocus('chat');
         } else {
             forceRestoreComposerFocus('home');
+        }
+
+        const removedRows = payload?.removed_rows;
+        if (typeof removedRows === 'number') {
+            await addMessage(`🗑️ Đã xóa đoạn chat (${removedRows} tin nhắn).`, 'bot', { stream: true });
         }
     } catch (error) {
         window.alert('Không thể xóa đoạn chat.');
@@ -999,6 +1152,34 @@ async function duplicateSession(sessionId) {
     } catch (error) {
         window.alert('Không thể nhân bản đoạn chat.');
         forceRestoreComposerFocus(document.body.classList.contains('chat-mode') ? 'chat' : 'home');
+    }
+}
+
+async function clearAllData() {
+    const confirmDelete = await showConfirmDialog('Bạn có chắc muốn xóa sạch toàn bộ dữ liệu chat không? Hành động này không thể hoàn tác.');
+    if (!confirmDelete) return;
+
+    try {
+        stopResponse();
+        const keepSidebarState = sidebar.classList.contains('open');
+
+        const response = await fetch(`${API_URL}/sessions`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Clear all data failed');
+        }
+
+        currentSessionId = null;
+        chatMessages.innerHTML = '';
+        setHeaderTitle('Trò chuyện mới');
+
+        await startNewSession(false, keepSidebarState);
+        await loadPastSessions();
+        forceRestoreComposerFocus(document.body.classList.contains('chat-mode') ? 'chat' : 'home');
+    } catch (error) {
+        window.alert('Không thể xóa sạch dữ liệu. Vui lòng thử lại.');
     }
 }
 

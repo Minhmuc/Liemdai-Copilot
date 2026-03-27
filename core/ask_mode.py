@@ -88,7 +88,11 @@ class AskMode:
         now = datetime.now().astimezone()
         current_time_context = now.strftime('%Y-%m-%d %H:%M:%S %Z (UTC%z)')
 
-        base_prompt = """Bạn là một trợ lý AI thân thiện và hữu ích. Hãy trả lời câu hỏi một cách tự nhiên, ngắn gọn và chính xác.
+        base_prompt = """Bạn là một trợ lý AI hữu ích và chuyên nghiệp.
+    Hãy trả lời tự nhiên, rõ ý, súc tích và chính xác.
+    Luôn xưng "tôi" khi trả lời người dùng.
+    Có thể dùng emoji khi phù hợp (0-2 emoji mỗi câu trả lời), không lạm dụng.
+    Giữ giọng điệu nhã nhặn, tránh sến/cringe hoặc cường điệu.
 
 Thông tin thời gian hệ thống hiện tại: {current_time_context}
 Khi người dùng hỏi về ngày/giờ hiện tại, hãy ưu tiên dùng chính thông tin thời gian này để trả lời, không suy đoán từ dữ liệu huấn luyện.

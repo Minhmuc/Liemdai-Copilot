@@ -13,9 +13,6 @@ class AgentMode:
         self.executor = CodeExecutor()
         self.max_iterations = 6
         self.safe_mode = True  # Ask confirmation for dangerous operations
-        self.ai_progress_stages = {
-            'start', 'confirm_needed', 'confirm_approved', 'error_retry', 'done', 'incomplete'
-        }
         
         # High-risk keywords requiring confirmation
         self.dangerous_keywords = [
@@ -49,7 +46,7 @@ class AgentMode:
             task: Task description
             confirmation_callback: Function(code, is_dangerous) -> bool
                                   Returns True to execute, False to skip
-            progress_callback: Function(status_text) -> None for realtime progress updates
+            progress_callback: Deprecated. Kept for backward compatibility.
             stop_callback: Function() -> bool
                           Returns True when user requested to stop/cancel current task
         
@@ -64,91 +61,26 @@ class AgentMode:
         print(f"\n{'='*60}")
         print(f"🎯 TASK: {task}")
         print(f"{'='*60}\n")
-        
+
+        # Kept to preserve call compatibility from older code paths.
+        _ = progress_callback
+
         results = []
-        last_progress = {'text': ''}
 
-        def emit(text: str, force: bool = False):
-            if not progress_callback or not text:
-                return
-            if force or text != last_progress['text']:
-                progress_callback(text)
-                last_progress['text'] = text
-
-        progress_fallback = {
-            "start": "🧠 Tôi đang phân tích yêu cầu của bạn.",
-            "plan": "🔎 Tôi đang chọn cách làm phù hợp.",
-            "prepare": "🛠️ Tôi đang chuẩn bị bước tiếp theo.",
-            "confirm_needed": "🛡️ Có bước nhạy cảm, tôi cần bạn xác nhận trước khi tiếp tục.",
-            "confirm_skipped": "⏭️ Tôi đã bỏ qua bước này theo lựa chọn của bạn.",
-            "confirm_approved": "✅ Đã nhận xác nhận, tôi tiếp tục ngay.",
-            "confirm_auto_skipped": "⚠️ Tôi tự động bỏ qua bước nhạy cảm để đảm bảo an toàn.",
-            "execute": "⚙️ Tôi đang thực hiện yêu cầu.",
-            "running": "⏳ Tôi đang xử lý, vui lòng chờ một chút.",
-            "error_retry": "🔁 Tôi gặp vướng mắc nhỏ và đang thử hướng khác.",
-            "verify": "✅ Tôi đã có kết quả tạm thời và đang kiểm tra lại.",
-            "adjust": "🧩 Tôi đang điều chỉnh để xử lý ổn định hơn.",
-            "good_progress": "📌 Tiến trình đang diễn ra ổn định.",
-            "done": "✅ Tôi đã hoàn tất phần việc chính.",
-            "incomplete": "⚠️ Tôi đã thử nhiều cách nhưng chưa thể hoàn tất trọn vẹn.",
-        }
-
-        def emit_stage(stage: str, force: bool = False, detail: str = "", iteration: int = 0):
-            if not progress_callback:
-                return
-
-            if stage in self.ai_progress_stages:
-                line = self._build_ai_progress_line(
-                    task=task,
-                    stage=stage,
-                    iteration=iteration,
-                    max_iterations=self.max_iterations,
-                    detail=detail,
-                    last_line=last_progress['text']
-                )
-            else:
-                line = progress_fallback.get(stage, "⏳ Tôi đang xử lý tiếp cho bạn.")
-
-            emit(line, force=force)
-        
-        emit_stage("start", force=True)
-
-        def is_stopped() -> bool:
-            try:
-                return bool(stop_callback and stop_callback())
-            except Exception:
-                return False
-
-        if is_stopped():
-            return {
-                'success': False,
-                'cancelled': True,
-                'iterations': 0,
-                'results': results,
-                'final_message': "⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn."
-            }
+        if self._is_stopped(stop_callback):
+            return self._cancel_result(results, 0)
         
         for iteration in range(1, self.max_iterations + 1):
             print(f"\n--- Iteration {iteration}/{self.max_iterations} ---")
 
-            if is_stopped():
-                emit("⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn.", force=True)
-                return {
-                    'success': False,
-                    'cancelled': True,
-                    'iterations': iteration - 1,
-                    'results': results,
-                    'final_message': "⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn."
-                }
-            
-            emit_stage("plan", iteration=iteration)
+            if self._is_stopped(stop_callback):
+                return self._cancel_result(results, iteration - 1)
             
             # Step 1: LLM generates code
             code = self._generate_code(task, results)
             
             if code is None:
                 # Task completed
-                emit_stage("done", force=True, iteration=iteration - 1)
                 return {
                     'success': True,
                     'iterations': iteration - 1,
@@ -158,17 +90,8 @@ class AgentMode:
             
             print(f"\n📝 Generated Code:\n{code}\n")
 
-            if is_stopped():
-                emit("⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn.", force=True)
-                return {
-                    'success': False,
-                    'cancelled': True,
-                    'iterations': iteration - 1,
-                    'results': results,
-                    'final_message': "⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn."
-                }
-            
-            emit_stage("prepare", iteration=iteration)
+            if self._is_stopped(stop_callback):
+                return self._cancel_result(results, iteration - 1)
             
             # Step 2: Check if confirmation needed
             is_dangerous = self._is_dangerous_code(code)
@@ -178,101 +101,52 @@ class AgentMode:
                 if confirmation_callback:
                     # Use callback to request confirmation
                     print("⚠️ Dangerous operation detected - requesting confirmation...")
-                    emit_stage("confirm_needed", force=True, iteration=iteration)
                     user_confirmed = confirmation_callback(code, is_dangerous)
                     
                     if not user_confirmed:
-                        if is_stopped():
-                            emit("⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn.", force=True)
-                            return {
-                                'success': False,
-                                'cancelled': True,
-                                'iterations': iteration - 1,
-                                'results': results,
-                                'final_message': "⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn."
-                            }
+                        if self._is_stopped(stop_callback):
+                            return self._cancel_result(results, iteration - 1)
                         print("⏭️ User skipped - continuing...")
-                        emit_stage("confirm_skipped", force=True, iteration=iteration)
-                        results.append({
-                            'iteration': iteration,
-                            'code': code,
-                            'output': '',
-                            'error': 'User skipped dangerous operation',
-                            'skipped': True,
-                            'is_dangerous': True
-                        })
+                        self._append_skipped_dangerous_result(results, iteration, code, 'User skipped dangerous operation')
                         continue
                     else:
                         print("✅ User confirmed - executing...")
-                        emit_stage("confirm_approved", force=True, iteration=iteration)
                 else:
                     # No callback - auto-skip (fallback)
                     print("⚠️ Dangerous operation - AUTO-SKIPPED (no confirmation handler)")
-                    emit_stage("confirm_auto_skipped", force=True, iteration=iteration)
-                    results.append({
-                        'iteration': iteration,
-                        'code': code,
-                        'output': '',
-                        'error': 'Auto-skipped: Dangerous operation (no confirmation handler)',
-                        'skipped': True,
-                        'is_dangerous': True
-                    })
+                    self._append_skipped_dangerous_result(
+                        results,
+                        iteration,
+                        code,
+                        'Auto-skipped: Dangerous operation (no confirmation handler)'
+                    )
                     continue
             else:
                 print("✅ Safe operation - auto-executing...")
-                emit_stage("execute", iteration=iteration)
             
             # Step 3: Execute code
-            if is_stopped():
-                emit("⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn.", force=True)
-                return {
-                    'success': False,
-                    'cancelled': True,
-                    'iterations': iteration - 1,
-                    'results': results,
-                    'final_message': "⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn."
-                }
-
-            emit_stage("running", iteration=iteration)
+            if self._is_stopped(stop_callback):
+                return self._cancel_result(results, iteration - 1)
             
             output, error = self.executor.execute(code)
-            
-            if error:
-                emit_stage("error_retry", force=True, detail=error[:120], iteration=iteration)
-            else:
-                emit_stage("verify", detail=(output or '')[:120], iteration=iteration)
-            
-            results.append({
-                'iteration': iteration,
-                'code': code,
-                'output': output,
-                'error': error
-            })
+            self._append_execution_result(results, iteration, code, output, error)
 
             # Break early if agent is stuck generating the same code repeatedly.
-            if len(results) >= 3:
-                c1 = (results[-1].get('code') or '').strip()
-                c2 = (results[-2].get('code') or '').strip()
-                c3 = (results[-3].get('code') or '').strip()
-                if c1 and c1 == c2 == c3:
-                    emit("⚠️ Tôi thấy đang lặp lại cùng một hướng xử lý, nên dừng lại để tránh tốn thời gian.", force=True)
-                    return {
-                        'success': False,
-                        'iterations': iteration,
-                        'results': results,
-                        'final_message': self._build_final_message(task, results, False)
-                    }
+            if self._is_repeating_same_code(results):
+                return {
+                    'success': False,
+                    'iterations': iteration,
+                    'results': results,
+                    'final_message': self._build_final_message(task, results, False)
+                }
             
             if error:
                 print(f"\n❌ Error: {error}")
-                emit_stage("adjust", iteration=iteration)
             else:
                 print(f"\n✅ Output:\n{output}")
-                emit_stage("good_progress", iteration=iteration)
             
             # Step 4: Check if task completed
             if self._is_task_completed(task, results):
-                emit_stage("done", force=True, iteration=iteration)
                 return {
                     'success': True,
                     'iterations': iteration,
@@ -281,7 +155,6 @@ class AgentMode:
                 }
         
         # Max iterations reached
-        emit_stage("incomplete", force=True, iteration=self.max_iterations)
         return {
             'success': False,
             'iterations': self.max_iterations,
@@ -289,56 +162,52 @@ class AgentMode:
             'final_message': self._build_final_message(task, results, False)
         }
 
-    def _build_ai_progress_line(
-        self,
-        task: str,
-        stage: str,
-        iteration: int,
-        max_iterations: int,
-        detail: str,
-        last_line: str,
-    ) -> str:
-        """Generate a short conversational progress line using LLM, fallback to static text."""
-        fallback = {
-            "start": "🧠 Tôi đang phân tích yêu cầu của bạn.",
-            "plan": f"🔎 Tôi đang thử phương án {iteration}/{max_iterations}.",
-            "prepare": "🛠️ Tôi đang chuẩn bị bước tiếp theo.",
-            "confirm_needed": "🛡️ Có bước nhạy cảm, tôi cần bạn xác nhận trước khi tiếp tục.",
-            "confirm_skipped": "⏭️ Tôi đã bỏ qua bước này theo lựa chọn của bạn.",
-            "confirm_approved": "✅ Đã nhận xác nhận, tôi tiếp tục ngay.",
-            "confirm_auto_skipped": "⚠️ Tôi tự động bỏ qua bước nhạy cảm để đảm bảo an toàn.",
-            "execute": "⚙️ Tôi đang thực hiện yêu cầu.",
-            "running": "⏳ Tôi đang xử lý, vui lòng chờ một chút.",
-            "error_retry": "🔁 Tôi gặp vướng mắc nhỏ và đang thử hướng khác.",
-            "verify": "✅ Tôi đã có kết quả tạm thời và đang kiểm tra lại.",
-            "adjust": "🧩 Tôi đang điều chỉnh để xử lý ổn định hơn.",
-            "good_progress": "📌 Tiến trình đang diễn ra ổn định.",
-            "done": "✅ Tôi đã hoàn tất phần việc chính.",
-            "incomplete": "⚠️ Tôi đã thử nhiều cách nhưng chưa thể hoàn tất trọn vẹn.",
-        }.get(stage, "⏳ Tôi đang xử lý tiếp cho bạn.")
-
+    def _is_stopped(self, stop_callback) -> bool:
+        """Safely evaluate stop callback."""
         try:
-            system_prompt = (
-                "Bạn là trợ lý đang cập nhật tiến độ xử lý task cho người dùng. "
-                "Viết đúng 1 câu tiếng Việt, tự nhiên, dễ hiểu, tối đa 20 từ. "
-                "Luôn xưng 'tôi'. Có thể dùng 0-1 emoji nếu phù hợp. "
-                "Không dùng ngôn ngữ kỹ thuật như code/execution/iteration. Giọng điệu chuyên nghiệp, tránh sáo rỗng."
-            )
-            prompt = (
-                f"Task: {task}\n"
-                f"Stage: {stage}\n"
-                f"Iteration: {iteration}/{max_iterations}\n"
-                f"Detail: {detail}\n"
-                f"Last line (avoid repeating): {last_line}\n"
-                "Hãy viết 1 câu cập nhật tiến độ ngay bây giờ."
-            )
-            line = (self.llm.chat(prompt, system_prompt) or "").strip()
-            line = line.splitlines()[0].strip() if line else ""
-            if not line:
-                return fallback
-            return line[:180]
+            return bool(stop_callback and stop_callback())
         except Exception:
-            return fallback
+            return False
+
+    def _cancel_result(self, results: list, iterations: int) -> Dict[str, Any]:
+        """Standard cancelled response payload."""
+        return {
+            'success': False,
+            'cancelled': True,
+            'iterations': iterations,
+            'results': results,
+            'final_message': "⏹️ Tôi đã dừng tác vụ theo yêu cầu của bạn."
+        }
+
+    def _append_skipped_dangerous_result(self, results: list, iteration: int, code: str, error_text: str):
+        """Append a skipped dangerous-step result in normalized shape."""
+        results.append({
+            'iteration': iteration,
+            'code': code,
+            'output': '',
+            'error': error_text,
+            'skipped': True,
+            'is_dangerous': True
+        })
+
+    def _append_execution_result(self, results: list, iteration: int, code: str, output: str, error: str):
+        """Append execution result in normalized shape."""
+        results.append({
+            'iteration': iteration,
+            'code': code,
+            'output': output,
+            'error': error
+        })
+
+    def _is_repeating_same_code(self, results: list) -> bool:
+        """Detect if latest 3 generated code snippets are identical."""
+        if len(results) < 3:
+            return False
+
+        c1 = (results[-1].get('code') or '').strip()
+        c2 = (results[-2].get('code') or '').strip()
+        c3 = (results[-3].get('code') or '').strip()
+        return bool(c1 and c1 == c2 == c3)
 
     def _build_final_message(self, task: str, results: list, success: bool) -> str:
         """Build a conversational final summary for end users."""

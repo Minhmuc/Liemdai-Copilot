@@ -544,9 +544,6 @@ async function executeAgentTask(task) {
     currentWebSocket = ws; // Store reference for stop button
 
     ws.onopen = () => {
-        startLiveStatusMessage(`🧠 Tôi đang xử lý yêu cầu: ${task}`);
-        appendLiveStatusMessage('🔌 Đã kết nối, tôi bắt đầu thực hiện ngay.');
-
         ws.send(JSON.stringify({
             type: 'chat',
             message: task,
@@ -563,15 +560,12 @@ async function executeAgentTask(task) {
         }
 
         if (data.type === 'status') {
-            await appendLiveStatusMessage(data.content);
+            // Progress streaming disabled for cleaner Agent UX.
         } else if (data.type === 'warning') {
-            await appendLiveStatusMessage(`⚠️ ${data.content || 'Tôi có một lưu ý nhỏ về an toàn khi xử lý yêu cầu này.'}`);
+            // Warnings can be omitted from inline stream when progress is disabled.
         } else if (data.type === 'confirmation_request') {
-            await appendLiveStatusMessage('🛡️ Tôi cần bạn xác nhận trước khi tiếp tục.');
             addConfirmationMessage(data.code, data.content, ws, data.request_id);
         } else if (data.type === 'response') {
-            await appendLiveStatusMessage('✅ Hoàn tất bước xử lý, tôi gửi bạn phần tóm tắt ngay dưới đây.');
-            endLiveStatusMessage();
             await addMessage(data.content, 'bot', { stream: true });
             await loadPastSessions();
             if (data.done) {
@@ -579,8 +573,6 @@ async function executeAgentTask(task) {
                 currentWebSocket = null;
             }
         } else if (data.type === 'error') {
-            await appendLiveStatusMessage('❌ Trong lúc xử lý có lỗi xảy ra.');
-            endLiveStatusMessage();
             await addMessage(data.content, 'bot', { stream: true });
             await loadPastSessions();
             ws.close();
@@ -589,8 +581,6 @@ async function executeAgentTask(task) {
     };
 
     ws.onerror = async (_error) => {
-        await appendLiveStatusMessage('❌ Mất kết nối realtime với backend.');
-        endLiveStatusMessage();
         await addMessage('❌ WebSocket error. Đảm bảo server đang chạy.', 'bot', { stream: true });
         ws.close();
         currentWebSocket = null;
@@ -602,7 +592,6 @@ async function executeAgentTask(task) {
     };
 
     ws.onclose = () => {
-        endLiveStatusMessage();
         currentWebSocket = null;
         // Reset UI
         isResponding = false;
@@ -655,10 +644,6 @@ function addConfirmationMessage(code, message, ws, requestId = null) {
     const resolveAndRemove = (confirmed) => {
         if (resolved) return;
         resolved = true;
-
-        appendLiveStatusMessage(
-            confirmed ? 'Bạn đã xác nhận thao tác nhạy cảm.' : 'Bạn đã bỏ qua thao tác nhạy cảm.',
-        );
 
         messageDiv.remove();
         ws.send(JSON.stringify({

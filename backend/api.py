@@ -363,7 +363,6 @@ async def websocket_chat(websocket: WebSocket):
                     # Agent mode - execute with confirmation callback
                     import concurrent.futures
                     loop = asyncio.get_running_loop()
-                    last_saved_status = {"value": ""}
                     stop_event = threading.Event()
                     active_agent_stop_event["value"] = stop_event
 
@@ -379,35 +378,6 @@ async def websocket_chat(websocket: WebSocket):
                         except Exception:
                             pass
 
-                    def emit_progress(status_text: str):
-                        """Best-effort realtime progress events from worker thread."""
-                        if stop_event.is_set():
-                            return
-
-                        normalized = (status_text or "").strip()
-                        if not normalized:
-                            return
-
-                        # Save progress line so timeline/status chat can be restored from LanceDB.
-                        if memory and normalized != last_saved_status["value"]:
-                            try:
-                                memory.add_message(normalized, "assistant", session_id, tags=["agent_status"])
-                                last_saved_status["value"] = normalized
-                            except Exception:
-                                pass
-
-                        try:
-                            fut = asyncio.run_coroutine_threadsafe(
-                                websocket.send_json({
-                                    "type": "status",
-                                    "content": normalized
-                                }),
-                                loop
-                            )
-                            fut.result(timeout=5)
-                        except Exception:
-                            pass
-                    
                     # Confirmation callback for agent mode
                     def request_confirmation(code: str, is_dangerous: bool) -> bool:
                         """Request confirmation from user via WebSocket"""
@@ -463,7 +433,7 @@ async def websocket_chat(websocket: WebSocket):
                             agent_mode.execute_task,
                             message,
                             request_confirmation,
-                            emit_progress,
+                            None,
                             lambda: stop_event.is_set()
                         )
 
